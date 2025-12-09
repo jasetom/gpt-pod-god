@@ -6,9 +6,18 @@ type ImagePreviewProps = {
   isProcessing: boolean;
   onDownload: () => void;
   currentStepLabel?: string;
+  progress?: number;
+  progressMessage?: string;
 };
 
-export function ImagePreview({ imageUrl, isProcessing, onDownload, currentStepLabel }: ImagePreviewProps) {
+export function ImagePreview({ 
+  imageUrl, 
+  isProcessing, 
+  onDownload, 
+  currentStepLabel,
+  progress = 0,
+  progressMessage = ''
+}: ImagePreviewProps) {
   return (
     <div className="glass-card rounded-2xl p-6 w-full">
       <div className="flex items-center justify-between mb-4">
@@ -34,17 +43,11 @@ export function ImagePreview({ imageUrl, isProcessing, onDownload, currentStepLa
         ) : (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-secondary/80">
             {isProcessing ? (
-              <div className="text-center space-y-4 flex flex-col items-center justify-center">
-                <div className="relative w-16 h-16 mx-auto">
-                  <div className="w-16 h-16 rounded-full border-4 border-muted animate-spin border-t-primary" />
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <Sparkles className="h-6 w-6 text-primary animate-pulse" />
-                  </div>
-                </div>
-                <p className="text-sm text-muted-foreground animate-pulse">
-                  {currentStepLabel || "Processing..."}
-                </p>
-              </div>
+              <ProcessingOverlay 
+                progress={progress} 
+                progressMessage={progressMessage}
+                currentStepLabel={currentStepLabel}
+              />
             ) : (
               <>
                 <ImageIcon className="h-16 w-16 text-muted-foreground/50 mb-4" />
@@ -56,23 +59,15 @@ export function ImagePreview({ imageUrl, isProcessing, onDownload, currentStepLa
           </div>
         )}
 
-        {/* Processing overlay */}
+        {/* Processing overlay when image exists */}
         {isProcessing && imageUrl && (
           <div className="absolute inset-0 bg-background/70 backdrop-blur-sm flex items-center justify-center">
-            <div className="text-center space-y-4 p-6 rounded-2xl bg-card/80 border border-border shadow-lg flex flex-col items-center">
-              <div className="relative w-16 h-16 mx-auto">
-                <div className="w-16 h-16 rounded-full border-4 border-muted animate-spin border-t-primary" />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <Sparkles className="h-6 w-6 text-primary animate-pulse" />
-                </div>
-              </div>
-              <p className="text-sm font-medium text-foreground">
-                {currentStepLabel || "Processing..."}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                This may take a moment
-              </p>
-            </div>
+            <ProcessingOverlay 
+              progress={progress} 
+              progressMessage={progressMessage}
+              currentStepLabel={currentStepLabel}
+              compact
+            />
           </div>
         )}
       </div>
@@ -92,25 +87,58 @@ export function ImagePreview({ imageUrl, isProcessing, onDownload, currentStepLa
   );
 }
 
-function Sparkles(props: React.SVGProps<SVGSVGElement>) {
+type ProcessingOverlayProps = {
+  progress: number;
+  progressMessage: string;
+  currentStepLabel?: string;
+  compact?: boolean;
+};
+
+function ProcessingOverlay({ progress, progressMessage, currentStepLabel, compact }: ProcessingOverlayProps) {
   return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...props}
-    >
-      <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
-      <path d="M5 3v4" />
-      <path d="M19 17v4" />
-      <path d="M3 5h4" />
-      <path d="M17 19h4" />
-    </svg>
+    <div className={`text-center space-y-4 flex flex-col items-center justify-center ${compact ? 'p-6 rounded-2xl bg-card/90 border border-border shadow-lg' : ''}`}>
+      {/* Circular progress indicator */}
+      <div className="relative w-20 h-20">
+        <svg className="w-20 h-20 transform -rotate-90" viewBox="0 0 80 80">
+          {/* Background circle */}
+          <circle
+            cx="40"
+            cy="40"
+            r="35"
+            fill="none"
+            stroke="hsl(var(--muted))"
+            strokeWidth="6"
+          />
+          {/* Progress circle */}
+          <circle
+            cx="40"
+            cy="40"
+            r="35"
+            fill="none"
+            stroke="hsl(var(--primary))"
+            strokeWidth="6"
+            strokeLinecap="round"
+            strokeDasharray={`${2 * Math.PI * 35}`}
+            strokeDashoffset={`${2 * Math.PI * 35 * (1 - progress / 100)}`}
+            className="transition-all duration-300 ease-out"
+          />
+        </svg>
+        {/* Percentage text */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="text-lg font-bold text-primary">
+            {Math.round(progress)}%
+          </span>
+        </div>
+      </div>
+      
+      <div className="space-y-1">
+        <p className="text-sm font-medium text-foreground">
+          {currentStepLabel || "Processing..."}
+        </p>
+        <p className="text-xs text-muted-foreground max-w-[200px]">
+          {progressMessage || "This may take a moment"}
+        </p>
+      </div>
+    </div>
   );
 }
