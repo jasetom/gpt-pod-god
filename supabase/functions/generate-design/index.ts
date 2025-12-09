@@ -27,85 +27,96 @@ serve(async (req) => {
       throw new Error('FAL_KEY is not configured');
     }
 
-    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
-    if (!OPENAI_API_KEY) {
-      throw new Error('OPENAI_API_KEY is not configured');
-    }
+    console.log('Step 1: Generating image with FLUX for prompt:', prompt);
 
-    console.log('Generating POD design with Fal.ai + gpt-image-1 for prompt:', prompt);
-
-    // Use fal.run for synchronous request (simpler, no polling needed)
-    const response = await fetch('https://fal.run/fal-ai/gpt-image-1/text-to-image/byok', {
+    // Step 1: Generate image with FLUX (no OpenAI key needed)
+    const generateResponse = await fetch('https://fal.run/fal-ai/flux/dev', {
       method: 'POST',
       headers: {
         'Authorization': `Key ${FAL_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        prompt: `Create a professional print-on-demand t-shirt design illustration.
+        prompt: `Create a professional print-on-demand t-shirt design illustration on a PURE WHITE background (#FFFFFF).
 
 STYLE REQUIREMENTS:
 - Vector/flat illustration style with bold, saturated colors
 - Clean, crisp edges suitable for printing on merchandise
 - Modern flat design aesthetic with bold outlines
 - Cartoon/illustration style that translates well to print
-- Centered composition
+- Centered composition on white background
+- Bold colors that stand out
 
 DO NOT include:
-- Any background elements - the subject should be isolated
-- Very light colors or pastels
+- Gradients or soft shadows
+- Very light colors or pastels that blend with white
 - Complex textures or photorealistic elements
-- Text unless specifically requested
 
 DESIGN REQUEST: ${prompt}
 
-Create a professional, print-ready isolated illustration.`,
-        image_size: '1024x1024',
-        background: 'transparent',
-        quality: 'high',
+Create a professional, print-ready illustration centered on a PURE WHITE background.`,
+        image_size: 'square_hd',
+        num_inference_steps: 28,
+        guidance_scale: 3.5,
         num_images: 1,
-        output_format: 'png',
-        openai_api_key: OPENAI_API_KEY
+        enable_safety_checker: false
       }),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Fal.ai error:', response.status, errorText);
-      
-      if (response.status === 429) {
-        return new Response(
-          JSON.stringify({ error: 'Rate limit exceeded. Please try again later.' }),
-          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      
-      throw new Error(`Fal.ai error: ${response.status} - ${errorText}`);
+    if (!generateResponse.ok) {
+      const errorText = await generateResponse.text();
+      console.error('FLUX generation error:', generateResponse.status, errorText);
+      throw new Error(`Image generation failed: ${generateResponse.status}`);
     }
 
-    const result = await response.json();
-    console.log('Generation complete, result keys:', Object.keys(result));
-
-    // Get the image URL from the result
-    const imageUrl = result.images?.[0]?.url;
+    const generateResult = await generateResponse.json();
+    const generatedImageUrl = generateResult.images?.[0]?.url;
     
-    if (!imageUrl) {
-      console.error('No image in response:', JSON.stringify(result));
+    if (!generatedImageUrl) {
+      console.error('No image in FLUX response:', JSON.stringify(generateResult));
       throw new Error('No image generated');
     }
 
-    console.log('Image URL received, fetching image...');
+    console.log('Step 2: Removing background...');
 
-    // Fetch the image and convert to base64
-    const imageResponse = await fetch(imageUrl);
+    // Step 2: Remove background using Fal.ai's rembg
+    const rembgResponse = await fetch('https://fal.run/fal-ai/imageutils/rembg', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Key ${FAL_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        image_url: generatedImageUrl
+      }),
+    });
+
+    if (!rembgResponse.ok) {
+      const errorText = await rembgResponse.text();
+      console.error('Background removal error:', rembgResponse.status, errorText);
+      throw new Error(`Background removal failed: ${rembgResponse.status}`);
+    }
+
+    const rembgResult = await rembgResponse.json();
+    const finalImageUrl = rembgResult.image?.url;
+
+    if (!finalImageUrl) {
+      console.error('No image in rembg response:', JSON.stringify(rembgResult));
+      throw new Error('Background removal failed - no image returned');
+    }
+
+    console.log('Step 3: Fetching final image...');
+
+    // Fetch the final image and convert to base64
+    const imageResponse = await fetch(finalImageUrl);
     if (!imageResponse.ok) {
-      throw new Error('Failed to fetch generated image');
+      throw new Error('Failed to fetch final image');
     }
     
     const imageBuffer = await imageResponse.arrayBuffer();
     const uint8Array = new Uint8Array(imageBuffer);
     
-    // Convert to base64 in chunks to avoid call stack issues
+    // Convert to base64 in chunks
     let binary = '';
     const chunkSize = 32768;
     for (let i = 0; i < uint8Array.length; i += chunkSize) {
@@ -115,7 +126,7 @@ Create a professional, print-ready isolated illustration.`,
     const base64 = btoa(binary);
     const dataUrl = `data:image/png;base64,${base64}`;
 
-    console.log('Image converted to base64 successfully');
+    console.log('Design generated successfully with transparent background');
 
     return new Response(
       JSON.stringify({ 
