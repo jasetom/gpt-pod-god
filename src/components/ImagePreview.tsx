@@ -8,6 +8,8 @@ type ImagePreviewProps = {
   currentStepLabel?: string;
   progress?: number;
   progressMessage?: string;
+  title?: string;
+  hideDownload?: boolean;
 };
 
 export function ImagePreview({ 
@@ -16,13 +18,15 @@ export function ImagePreview({
   onDownload, 
   currentStepLabel,
   progress = 0,
-  progressMessage = ''
+  progressMessage = '',
+  title = 'Preview',
+  hideDownload = false
 }: ImagePreviewProps) {
   return (
     <div className="glass-card rounded-2xl p-6 w-full">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-foreground">Preview</h3>
-        {imageUrl && !isProcessing && (
+        <h3 className="text-lg font-semibold text-foreground">{title}</h3>
+        {imageUrl && !isProcessing && !hideDownload && (
           <Button variant="glass" size="sm" onClick={onDownload}>
             <Download className="h-4 w-4" />
             Download PNG

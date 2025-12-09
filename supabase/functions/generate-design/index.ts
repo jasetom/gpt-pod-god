@@ -207,9 +207,26 @@ ${sanitizedPrompt}`,
       console.error('BiRefNet exception:', birefnetError);
     }
 
-    console.log('Step 3: Fetching final image...');
+    console.log('Step 3: Fetching images...');
 
-    // Fetch the final image and convert to base64
+    // Fetch the raw image (before BiRefNet processing)
+    const rawImageResponse = await fetch(initialImageUrl);
+    if (!rawImageResponse.ok) {
+      throw new Error('Failed to fetch raw image');
+    }
+    
+    const rawImageBuffer = await rawImageResponse.arrayBuffer();
+    const rawUint8Array = new Uint8Array(rawImageBuffer);
+    let rawBinary = '';
+    const chunkSize = 32768;
+    for (let i = 0; i < rawUint8Array.length; i += chunkSize) {
+      const chunk = rawUint8Array.slice(i, i + chunkSize);
+      rawBinary += String.fromCharCode.apply(null, Array.from(chunk));
+    }
+    const rawBase64 = btoa(rawBinary);
+    const rawDataUrl = `data:image/png;base64,${rawBase64}`;
+
+    // Fetch the final image (after BiRefNet processing)
     const imageResponse = await fetch(finalImageUrl);
     if (!imageResponse.ok) {
       throw new Error('Failed to fetch final image');
@@ -220,7 +237,6 @@ ${sanitizedPrompt}`,
     
     // Convert to base64 in chunks
     let binary = '';
-    const chunkSize = 32768;
     for (let i = 0; i < uint8Array.length; i += chunkSize) {
       const chunk = uint8Array.slice(i, i + chunkSize);
       binary += String.fromCharCode.apply(null, Array.from(chunk));
@@ -234,6 +250,7 @@ ${sanitizedPrompt}`,
       JSON.stringify({ 
         success: true,
         imageUrl: dataUrl,
+        rawImageUrl: rawDataUrl,
         message: 'Design generated with clean edges'
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
