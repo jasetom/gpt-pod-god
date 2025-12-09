@@ -86,7 +86,7 @@ Create a professional, print-ready isolated illustration.`,
 
     console.log('Step 2: Refining edges with BiRefNet...');
 
-    // Step 2: Use BiRefNet for high-quality edge refinement and background removal
+    // Step 2: Use BiRefNet for high-quality edge refinement (preserves transparency)
     const birefnetResponse = await fetch('https://fal.run/fal-ai/birefnet', {
       method: 'POST',
       headers: {
@@ -100,66 +100,16 @@ Create a professional, print-ready isolated illustration.`,
       }),
     });
 
-    let refinedImageUrl = initialImageUrl;
+    let finalImageUrl = initialImageUrl;
     if (birefnetResponse.ok) {
       const birefnetResult = await birefnetResponse.json();
-      refinedImageUrl = birefnetResult.image?.url || initialImageUrl;
+      finalImageUrl = birefnetResult.image?.url || initialImageUrl;
       console.log('Edge refinement complete');
     } else {
       console.error('BiRefNet error, using original image');
     }
 
-    console.log('Step 3: Upscaling with ESRGAN...');
-
-    // Step 3: Upscale the refined image with ESRGAN
-    const esrganResponse = await fetch('https://fal.run/fal-ai/esrgan', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Key ${FAL_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        image_url: refinedImageUrl,
-        scale: 4,
-        face_enhance: false
-      }),
-    });
-
-    let upscaledImageUrl = refinedImageUrl;
-    if (esrganResponse.ok) {
-      const esrganResult = await esrganResponse.json();
-      upscaledImageUrl = esrganResult.image?.url || refinedImageUrl;
-      console.log('ESRGAN upscaling complete');
-    } else {
-      console.error('ESRGAN error, using refined image');
-    }
-
-    console.log('Step 4: Final edge cleanup with BiRefNet...');
-
-    // Step 4: Run BiRefNet again on upscaled image to restore clean transparency
-    const finalBirefnetResponse = await fetch('https://fal.run/fal-ai/birefnet', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Key ${FAL_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        image_url: upscaledImageUrl,
-        model: 'General',
-        output_format: 'png'
-      }),
-    });
-
-    let finalImageUrl = upscaledImageUrl;
-    if (finalBirefnetResponse.ok) {
-      const finalBirefnetResult = await finalBirefnetResponse.json();
-      finalImageUrl = finalBirefnetResult.image?.url || upscaledImageUrl;
-      console.log('Final transparency cleanup complete');
-    } else {
-      console.error('Final BiRefNet error, using upscaled image');
-    }
-
-    console.log('Step 4: Fetching final image...');
+    console.log('Step 3: Fetching final image...');
 
     // Fetch the final image and convert to base64
     const imageResponse = await fetch(finalImageUrl);
@@ -186,7 +136,7 @@ Create a professional, print-ready isolated illustration.`,
       JSON.stringify({ 
         success: true,
         imageUrl: dataUrl,
-        message: 'Design generated, upscaled (4x), and edges refined'
+        message: 'Design generated with clean edges'
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
