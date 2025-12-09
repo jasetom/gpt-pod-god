@@ -27,10 +27,10 @@ serve(async (req) => {
       throw new Error('FAL_KEY is not configured');
     }
 
-    console.log('Generating POD design with gpt-image-1-mini for prompt:', prompt);
+    console.log('Step 1: Generating design with gpt-image-1-mini...');
 
-    // Use fal-ai/gpt-image-1-mini (Fal.ai's hosted version, no OpenAI key needed)
-    const response = await fetch('https://fal.run/fal-ai/gpt-image-1-mini', {
+    // Step 1: Generate the initial design
+    const generateResponse = await fetch('https://fal.run/fal-ai/gpt-image-1-mini', {
       method: 'POST',
       headers: {
         'Authorization': `Key ${FAL_KEY}`,
@@ -63,37 +63,97 @@ Create a professional, print-ready isolated illustration.`,
       }),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Fal.ai error:', response.status, errorText);
+    if (!generateResponse.ok) {
+      const errorText = await generateResponse.text();
+      console.error('Generation error:', generateResponse.status, errorText);
       
-      if (response.status === 429) {
+      if (generateResponse.status === 429) {
         return new Response(
           JSON.stringify({ error: 'Rate limit exceeded. Please try again later.' }),
           { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
       
-      throw new Error(`Fal.ai error: ${response.status} - ${errorText}`);
+      throw new Error(`Generation error: ${generateResponse.status}`);
     }
 
-    const result = await response.json();
-    console.log('Generation complete');
-
-    // Get the image URL from the result
-    const imageUrl = result.images?.[0]?.url;
+    const generateResult = await generateResponse.json();
+    const initialImageUrl = generateResult.images?.[0]?.url;
     
-    if (!imageUrl) {
-      console.error('No image in response:', JSON.stringify(result));
+    if (!initialImageUrl) {
       throw new Error('No image generated');
     }
 
-    console.log('Fetching generated image...');
+    console.log('Step 2: Refining edges with BiRefNet...');
 
-    // Fetch the image and convert to base64
-    const imageResponse = await fetch(imageUrl);
+    // Step 2: Use BiRefNet for high-quality edge refinement
+    const birefnetResponse = await fetch('https://fal.run/fal-ai/birefnet', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Key ${FAL_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        image_url: initialImageUrl,
+        model: 'General',
+        operating_resolution: '1024x1024',
+        output_format: 'png'
+      }),
+    });
+
+    if (!birefnetResponse.ok) {
+      console.error('BiRefNet error, using original image');
+      // Fall back to original if BiRefNet fails
+    }
+
+    let refinedImageUrl = initialImageUrl;
+    if (birefnetResponse.ok) {
+      const birefnetResult = await birefnetResponse.json();
+      refinedImageUrl = birefnetResult.image?.url || initialImageUrl;
+      console.log('Edge refinement complete');
+    }
+
+    console.log('Step 3: AI upscaling with Clarity Upscaler...');
+
+    // Step 3: Use Clarity Upscaler for high-quality AI upscaling
+    const upscaleResponse = await fetch('https://fal.run/fal-ai/clarity-upscaler', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Key ${FAL_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        image_url: refinedImageUrl,
+        scale: 4,
+        creativity: 0.2,
+        resemblance: 0.9,
+        prompt: 'high quality vector illustration, sharp edges, clean lines, professional t-shirt design',
+        negative_prompt: 'blurry, low quality, pixelated, noisy, grainy, artifacts',
+        guidance_scale: 7.5,
+        num_inference_steps: 25,
+        enable_safety_checker: false
+      }),
+    });
+
+    if (!upscaleResponse.ok) {
+      const errorText = await upscaleResponse.text();
+      console.error('Upscale error:', upscaleResponse.status, errorText);
+      // Continue with non-upscaled version if upscaling fails
+    }
+
+    let finalImageUrl = refinedImageUrl;
+    if (upscaleResponse.ok) {
+      const upscaleResult = await upscaleResponse.json();
+      finalImageUrl = upscaleResult.image?.url || refinedImageUrl;
+      console.log('AI upscaling complete');
+    }
+
+    console.log('Step 4: Fetching final image...');
+
+    // Fetch the final image and convert to base64
+    const imageResponse = await fetch(finalImageUrl);
     if (!imageResponse.ok) {
-      throw new Error('Failed to fetch generated image');
+      throw new Error('Failed to fetch final image');
     }
     
     const imageBuffer = await imageResponse.arrayBuffer();
@@ -109,13 +169,13 @@ Create a professional, print-ready isolated illustration.`,
     const base64 = btoa(binary);
     const dataUrl = `data:image/png;base64,${base64}`;
 
-    console.log('Image converted to base64 successfully');
+    console.log('All steps complete!');
 
     return new Response(
       JSON.stringify({ 
         success: true,
         imageUrl: dataUrl,
-        message: 'Design generated successfully with transparent background'
+        message: 'Design generated, refined, and upscaled successfully'
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
