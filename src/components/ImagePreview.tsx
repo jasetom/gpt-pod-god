@@ -10,6 +10,8 @@ type ImagePreviewProps = {
   progressMessage?: string;
   title?: string;
   hideDownload?: boolean;
+  dimensions?: string;
+  ratio?: string;
 };
 
 export function ImagePreview({ 
@@ -20,7 +22,9 @@ export function ImagePreview({
   progress = 0,
   progressMessage = '',
   title = 'Preview',
-  hideDownload = false
+  hideDownload = false,
+  dimensions = '4500×5400px',
+  ratio = '4:5 Ratio'
 }: ImagePreviewProps) {
   return (
     <div className="glass-card rounded-2xl p-6 w-full">
@@ -78,10 +82,10 @@ export function ImagePreview({
 
       <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
         <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-secondary/50">
-          4:5 Ratio
+          {ratio}
         </span>
         <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-secondary/50">
-          4500×5400px
+          {dimensions}
         </span>
         <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-secondary/50">
           PNG
