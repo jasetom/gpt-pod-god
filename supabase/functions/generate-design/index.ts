@@ -37,28 +37,100 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        prompt: `Create a professional print-on-demand t-shirt design illustration.
+        prompt: `Create a professional print-on-demand t-shirt illustration.
+The final output MUST be a fully isolated design on a 100% transparent background.
 
-CRITICAL STYLE REQUIREMENTS:
-- Vector/flat illustration style with 100% SOLID, OPAQUE colors only
-- Every colored area must be completely solid with NO transparency, NO gradients, NO semi-transparent effects
-- Bold black outlines around all elements
-- Hard, crisp edges - no soft edges, no anti-aliasing blur, no glow effects
-- Modern flat design aesthetic similar to screen printing
-- Cartoon/illustration style with sharp color boundaries
-- Centered composition
+CRITICAL GLOBAL RULES (ENFORCING GPT IMAGE 1 MINI LIMITATIONS)
 
-ABSOLUTELY DO NOT include:
-- Any background elements, colors, or fills between design elements
-- Semi-transparent pixels, gradients, shadows, or glows
-- Soft edges or feathered boundaries
-- Any color behind, between, or around text letters
-- Photorealistic textures or subtle color variations
-- Light colors, pastels, or low-opacity fills
+Use solid, fully opaque colors only.
+No pixel may contain partial opacity.
 
-DESIGN REQUEST: ${prompt}
+Absolutely no gradients, no soft blends, no color ramps, no tonal shifts.
 
-Create a print-ready isolated illustration with completely solid opaque colors and perfectly clean transparent background.`,
+Every shape must have a thick, consistent black outline with uniform stroke width.
+
+All edges must be hard-edged vector-style, never soft or feathered.
+
+Do not apply lighting, shading, highlights, reflections, inner shadows, outer glows, or ambient occlusion.
+
+No noise, texture, patterns, grain, dithering, or "semi-realistic" rendering.
+
+ANTI-FAILSAFE OVERRIDES (SPECIFICALLY FOR GPT IMAGE 1 MINI)
+
+These prevent common unwanted behaviors:
+
+Do not generate any background color, background texture, or residual color halo.
+Background must be pure transparency only.
+
+Do not place any color behind text or inside negative spaces of letters.
+
+Do not fade edges into transparency. Edges must be fully opaque, hard, and clean.
+
+Do not add soft antialiasing. Keep edges pixel-crisp and sharp.
+
+Do not simulate shadows with darker shapes unless they are fully solid, flat colors with outlines.
+
+Do not create subtle tints or variations inside a single color area.
+
+STYLE TARGET (LOCKED, CONSISTENT OUTPUT)
+
+Flat vector illustration (screen-printing aesthetic)
+
+Bold, high-contrast palette optimized for dark t-shirts
+
+Cartoon / graphic-illustration clarity
+
+Centered composition
+
+100% of the artwork contained within the frame — no cut-offs
+
+Text, if included, must be:
+
+solid opaque fill
+
+bold black outline
+
+clean negative space
+
+aligned and centered
+
+ABSOLUTE "DO NOT INCLUDE" LIST
+
+No backgrounds (colors, patterns, shapes, gradients)
+
+No shading
+
+No soft light or glow
+
+No transparency effects
+
+No photorealism
+
+No complex lighting
+
+No subtle color differences
+
+No pastel tones or low-opacity fills
+
+No floating artifacts around the design
+
+No fuzzy or incomplete outlines
+
+OUTPUT GOAL
+
+Produce a print-ready transparent PNG with:
+
+Fully opaque, solid color fills
+
+Hard-edged outlines
+
+Zero artifacts
+
+Clean silhouette
+
+Strong visibility on dark POD garments
+
+DESIGN REQUEST: ${prompt}`,
         image_size: '1024x1024',
         background: 'transparent',
         quality: 'high',
