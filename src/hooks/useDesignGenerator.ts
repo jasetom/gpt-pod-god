@@ -21,17 +21,15 @@ export type StepInfo = {
 export const STEPS: StepInfo[] = [
   { id: 'generating', label: 'Generating', description: 'AI creates your design' },
   { id: 'refining', label: 'Refining', description: 'BiRefNet edge cleanup' },
-  { id: 'upscaling', label: 'Upscaling', description: 'ESRGAN 4x super-resolution' },
-  { id: 'finalRefine', label: 'Transparency', description: 'Restoring clean edges' },
+  { id: 'upscaling', label: 'Upscaling', description: 'Scaling to print size' },
   { id: 'complete', label: 'Complete', description: 'Ready to download' },
 ];
 
 const STEP_PROGRESS: Record<string, { start: number; end: number }> = {
-  generating: { start: 0, end: 30 },
-  refining: { start: 30, end: 50 },
-  upscaling: { start: 50, end: 75 },
-  finalRefine: { start: 75, end: 90 },
-  finalizing: { start: 90, end: 100 },
+  generating: { start: 0, end: 50 },
+  refining: { start: 50, end: 75 },
+  upscaling: { start: 75, end: 95 },
+  finalizing: { start: 95, end: 100 },
 };
 
 export function useDesignGenerator() {
@@ -75,7 +73,7 @@ export function useDesignGenerator() {
 
       // Simulate progress through stages
       let currentProgress = 0;
-      const stages = ['generating', 'refining', 'upscaling', 'finalRefine'];
+      const stages = ['generating', 'refining'];
       let stageIndex = 0;
       
       const stageMessages: Record<string, string[]> = {
@@ -86,18 +84,8 @@ export function useDesignGenerator() {
         ],
         refining: [
           'BiRefNet edge analysis...',
-          'Cleaning initial transparency...',
-          'Perfecting edge boundaries...',
-        ],
-        upscaling: [
-          'ESRGAN 4x super-resolution...',
-          'Enhancing pixel details...',
-          'Scaling to print resolution...',
-        ],
-        finalRefine: [
-          'Final BiRefNet pass...',
-          'Restoring clean transparency...',
-          'Finalizing edge quality...',
+          'Cleaning transparency boundaries...',
+          'Perfecting edge quality...',
         ],
       };
 
@@ -108,13 +96,11 @@ export function useDesignGenerator() {
         
         const { start, end } = stageInfo;
         
-        // Smoothly progress within each stage
         if (currentProgress < end - 3) {
-          const increment = Math.random() * 1.5 + 0.3;
+          const increment = Math.random() * 1.5 + 0.5;
           currentProgress = Math.min(currentProgress + increment, end - 3);
           setProgress(Math.round(currentProgress));
           
-          // Update message based on progress within stage
           const stageProgress = (currentProgress - start) / (end - start);
           const messages = stageMessages[currentStage] || ['Processing...'];
           const msgIndex = Math.min(
@@ -123,19 +109,11 @@ export function useDesignGenerator() {
           );
           setProgressMessage(messages[msgIndex]);
           
-          // Move to next stage
           if (currentProgress >= end - 5 && stageIndex < stages.length - 1) {
             stageIndex++;
-            const nextStage = stages[stageIndex];
-            if (nextStage === 'refining') {
+            if (stages[stageIndex] === 'refining') {
               setStep('refining');
               setCurrentStepIndex(1);
-            } else if (nextStage === 'upscaling') {
-              setStep('upscaling');
-              setCurrentStepIndex(2);
-            } else if (nextStage === 'finalRefine') {
-              setStep('refining');
-              setCurrentStepIndex(3);
             }
           }
         }
@@ -153,9 +131,10 @@ export function useDesignGenerator() {
       if (data.error) throw new Error(data.error);
       if (!data.imageUrl) throw new Error('No image received');
 
-      setProgress(90);
-      setProgressMessage('Processing final image...');
-      setStep('finalizing');
+      setProgress(76);
+      setProgressMessage('Upscaling to print resolution...');
+      setStep('upscaling');
+      setCurrentStepIndex(2);
 
       // Convert base64 to blob
       const base64Data = data.imageUrl.split(',')[1];
@@ -166,7 +145,7 @@ export function useDesignGenerator() {
       }
       let imageBlob = new Blob([bytes], { type: 'image/png' });
 
-      setProgress(95);
+      setProgress(85);
       setProgressMessage('Fitting to 4500×5400 canvas...');
 
       // Resize to target dimensions
@@ -177,7 +156,7 @@ export function useDesignGenerator() {
 
       // Complete
       setStep('complete');
-      setCurrentStepIndex(4);
+      setCurrentStepIndex(3);
       setProgress(100);
       setProgressMessage('Complete!');
       toast.success('Your high-quality design is ready!');
