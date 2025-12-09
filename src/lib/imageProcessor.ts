@@ -3,17 +3,19 @@ const TARGET_HEIGHT = 5400;
 const DESIGN_FILL_RATIO = 0.85;
 
 /**
- * Two-step upscale for better quality (max 2x per step to avoid memory issues)
+ * Multi-step upscale for better quality (max 2x per step to preserve details)
  */
-function twoStepUpscale(
+function multiStepUpscale(
   sourceCanvas: HTMLCanvasElement,
   srcX: number, srcY: number, srcW: number, srcH: number,
   targetW: number, targetH: number
 ): HTMLCanvasElement {
-  const scale = Math.max(targetW / srcW, targetH / srcH);
+  const scaleX = targetW / srcW;
+  const scaleY = targetH / srcH;
+  const maxScale = Math.max(scaleX, scaleY);
   
   // If scale is <= 2x, do single pass
-  if (scale <= 2) {
+  if (maxScale <= 2) {
     const finalCanvas = document.createElement('canvas');
     finalCanvas.width = targetW;
     finalCanvas.height = targetH;
@@ -24,25 +26,49 @@ function twoStepUpscale(
     return finalCanvas;
   }
   
-  // Otherwise do 2-step: first to 2x, then to final
-  const midW = Math.round(srcW * 2);
-  const midH = Math.round(srcH * 2);
+  // Calculate number of 2x steps needed
+  const numSteps = Math.ceil(Math.log2(maxScale));
+  console.log(`Multi-step upscale: ${numSteps} steps for ${maxScale.toFixed(2)}x scale`);
   
-  const midCanvas = document.createElement('canvas');
-  midCanvas.width = midW;
-  midCanvas.height = midH;
-  const midCtx = midCanvas.getContext('2d')!;
-  midCtx.imageSmoothingEnabled = true;
-  midCtx.imageSmoothingQuality = 'high';
-  midCtx.drawImage(sourceCanvas, srcX, srcY, srcW, srcH, 0, 0, midW, midH);
+  let currentCanvas = document.createElement('canvas');
+  currentCanvas.width = srcW;
+  currentCanvas.height = srcH;
+  let currentCtx = currentCanvas.getContext('2d')!;
+  currentCtx.drawImage(sourceCanvas, srcX, srcY, srcW, srcH, 0, 0, srcW, srcH);
   
+  let currentW = srcW;
+  let currentH = srcH;
+  
+  // Do intermediate 2x steps
+  for (let step = 0; step < numSteps - 1; step++) {
+    const nextW = Math.min(currentW * 2, targetW);
+    const nextH = Math.min(currentH * 2, targetH);
+    
+    const nextCanvas = document.createElement('canvas');
+    nextCanvas.width = nextW;
+    nextCanvas.height = nextH;
+    const nextCtx = nextCanvas.getContext('2d')!;
+    nextCtx.imageSmoothingEnabled = true;
+    nextCtx.imageSmoothingQuality = 'high';
+    nextCtx.drawImage(currentCanvas, 0, 0, currentW, currentH, 0, 0, nextW, nextH);
+    
+    currentCanvas = nextCanvas;
+    currentW = nextW;
+    currentH = nextH;
+    
+    console.log(`Step ${step + 1}: ${currentW}x${currentH}`);
+  }
+  
+  // Final step to exact target dimensions
   const finalCanvas = document.createElement('canvas');
   finalCanvas.width = targetW;
   finalCanvas.height = targetH;
   const finalCtx = finalCanvas.getContext('2d')!;
   finalCtx.imageSmoothingEnabled = true;
   finalCtx.imageSmoothingQuality = 'high';
-  finalCtx.drawImage(midCanvas, 0, 0, midW, midH, 0, 0, targetW, targetH);
+  finalCtx.drawImage(currentCanvas, 0, 0, currentW, currentH, 0, 0, targetW, targetH);
+  
+  console.log(`Final step: ${targetW}x${targetH}`);
   
   return finalCanvas;
 }
@@ -117,8 +143,8 @@ export async function resizeToTarget(imageBlob: Blob): Promise<Blob> {
     finalContentWidth = maxContentHeight * contentRatio;
   }
 
-  // Two-step upscale for better quality
-  const scaledCanvas = twoStepUpscale(
+  // Multi-step upscale for better quality
+  const scaledCanvas = multiStepUpscale(
     tempCanvas,
     cropLeft, cropTop, contentWidth, contentHeight,
     Math.round(finalContentWidth), Math.round(finalContentHeight)
