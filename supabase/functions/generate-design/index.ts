@@ -34,8 +34,8 @@ serve(async (req) => {
 
     console.log('Generating POD design with Fal.ai + gpt-image-1 for prompt:', prompt);
 
-    // Submit request to Fal.ai queue
-    const submitResponse = await fetch('https://queue.fal.run/fal-ai/gpt-image-1/text-to-image/byok', {
+    // Use fal.run for synchronous request (simpler, no polling needed)
+    const response = await fetch('https://fal.run/fal-ai/gpt-image-1/text-to-image/byok', {
       method: 'POST',
       headers: {
         'Authorization': `Key ${FAL_KEY}`,
@@ -69,69 +69,22 @@ Create a professional, print-ready isolated illustration.`,
       }),
     });
 
-    if (!submitResponse.ok) {
-      const errorText = await submitResponse.text();
-      console.error('Fal.ai submit error:', submitResponse.status, errorText);
-      throw new Error(`Fal.ai submit error: ${submitResponse.status} - ${errorText}`);
-    }
-
-    const submitData = await submitResponse.json();
-    const requestId = submitData.request_id;
-    console.log('Request submitted, ID:', requestId);
-
-    // Poll for result
-    let result = null;
-    let attempts = 0;
-    const maxAttempts = 60; // 60 seconds max wait
-
-    while (attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Fal.ai error:', response.status, errorText);
       
-      const statusResponse = await fetch(
-        `https://queue.fal.run/fal-ai/gpt-image-1/text-to-image/byok/requests/${requestId}/status`,
-        {
-          headers: {
-            'Authorization': `Key ${FAL_KEY}`,
-          },
-        }
-      );
-
-      if (!statusResponse.ok) {
-        console.error('Status check failed:', statusResponse.status);
-        attempts++;
-        continue;
-      }
-
-      const statusData = await statusResponse.json();
-      console.log('Status:', statusData.status);
-
-      if (statusData.status === 'COMPLETED') {
-        // Fetch the result
-        const resultResponse = await fetch(
-          `https://queue.fal.run/fal-ai/gpt-image-1/text-to-image/byok/requests/${requestId}`,
-          {
-            headers: {
-              'Authorization': `Key ${FAL_KEY}`,
-            },
-          }
+      if (response.status === 429) {
+        return new Response(
+          JSON.stringify({ error: 'Rate limit exceeded. Please try again later.' }),
+          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
-
-        if (resultResponse.ok) {
-          result = await resultResponse.json();
-          break;
-        }
-      } else if (statusData.status === 'FAILED') {
-        throw new Error('Image generation failed');
       }
-
-      attempts++;
+      
+      throw new Error(`Fal.ai error: ${response.status} - ${errorText}`);
     }
 
-    if (!result) {
-      throw new Error('Timeout waiting for image generation');
-    }
-
-    console.log('Generation complete');
+    const result = await response.json();
+    console.log('Generation complete, result keys:', Object.keys(result));
 
     // Get the image URL from the result
     const imageUrl = result.images?.[0]?.url;
@@ -141,11 +94,28 @@ Create a professional, print-ready isolated illustration.`,
       throw new Error('No image generated');
     }
 
+    console.log('Image URL received, fetching image...');
+
     // Fetch the image and convert to base64
     const imageResponse = await fetch(imageUrl);
+    if (!imageResponse.ok) {
+      throw new Error('Failed to fetch generated image');
+    }
+    
     const imageBuffer = await imageResponse.arrayBuffer();
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)));
+    const uint8Array = new Uint8Array(imageBuffer);
+    
+    // Convert to base64 in chunks to avoid call stack issues
+    let binary = '';
+    const chunkSize = 32768;
+    for (let i = 0; i < uint8Array.length; i += chunkSize) {
+      const chunk = uint8Array.slice(i, i + chunkSize);
+      binary += String.fromCharCode.apply(null, Array.from(chunk));
+    }
+    const base64 = btoa(binary);
     const dataUrl = `data:image/png;base64,${base64}`;
+
+    console.log('Image converted to base64 successfully');
 
     return new Response(
       JSON.stringify({ 
