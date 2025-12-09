@@ -54,7 +54,7 @@ serve(async (req) => {
       throw new Error('FAL_KEY is not configured');
     }
 
-    console.log('Step 1: Generating design with gpt-image-1-mini (transparent background)...');
+    console.log('Generating design with gpt-image-1-mini (transparent background)...');
 
     // Step 1: Generate the initial design with transparent background
     const generateResponse = await fetch('https://fal.run/fal-ai/gpt-image-1-mini', {
@@ -174,69 +174,18 @@ ${sanitizedPrompt}`,
       throw new Error('No image generated');
     }
 
-    console.log('Step 2: Refining edges with BiRefNet...');
+    console.log('Fetching generated image...');
 
-    // Step 2: Use BiRefNet for high-quality edge refinement (preserves transparency)
-    let finalImageUrl = initialImageUrl;
-    
-    try {
-      const birefnetResponse = await fetch('https://fal.run/fal-ai/birefnet', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Key ${FAL_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          image_url: initialImageUrl,
-          model: 'General Use (Light)',
-          operating_resolution: '1024x1024',
-          output_format: 'png'
-        }),
-      });
-
-      if (birefnetResponse.ok) {
-        const birefnetResult = await birefnetResponse.json();
-        console.log('BiRefNet result:', JSON.stringify(birefnetResult));
-        finalImageUrl = birefnetResult.image?.url || initialImageUrl;
-        console.log('Edge refinement complete, URL:', finalImageUrl);
-      } else {
-        const errorText = await birefnetResponse.text();
-        console.error('BiRefNet error:', birefnetResponse.status, errorText);
-      }
-    } catch (birefnetError) {
-      console.error('BiRefNet exception:', birefnetError);
-    }
-
-    console.log('Step 3: Fetching images...');
-
-    // Fetch the raw image (before BiRefNet processing)
-    const rawImageResponse = await fetch(initialImageUrl);
-    if (!rawImageResponse.ok) {
-      throw new Error('Failed to fetch raw image');
-    }
-    
-    const rawImageBuffer = await rawImageResponse.arrayBuffer();
-    const rawUint8Array = new Uint8Array(rawImageBuffer);
-    let rawBinary = '';
-    const chunkSize = 32768;
-    for (let i = 0; i < rawUint8Array.length; i += chunkSize) {
-      const chunk = rawUint8Array.slice(i, i + chunkSize);
-      rawBinary += String.fromCharCode.apply(null, Array.from(chunk));
-    }
-    const rawBase64 = btoa(rawBinary);
-    const rawDataUrl = `data:image/png;base64,${rawBase64}`;
-
-    // Fetch the final image (after BiRefNet processing)
-    const imageResponse = await fetch(finalImageUrl);
+    // Fetch the image and convert to base64
+    const imageResponse = await fetch(initialImageUrl);
     if (!imageResponse.ok) {
-      throw new Error('Failed to fetch final image');
+      throw new Error('Failed to fetch image');
     }
     
     const imageBuffer = await imageResponse.arrayBuffer();
     const uint8Array = new Uint8Array(imageBuffer);
-    
-    // Convert to base64 in chunks
     let binary = '';
+    const chunkSize = 32768;
     for (let i = 0; i < uint8Array.length; i += chunkSize) {
       const chunk = uint8Array.slice(i, i + chunkSize);
       binary += String.fromCharCode.apply(null, Array.from(chunk));
@@ -244,14 +193,13 @@ ${sanitizedPrompt}`,
     const base64 = btoa(binary);
     const dataUrl = `data:image/png;base64,${base64}`;
 
-    console.log('All steps complete!');
+    console.log('Generation complete!');
 
     return new Response(
       JSON.stringify({ 
         success: true,
         imageUrl: dataUrl,
-        rawImageUrl: rawDataUrl,
-        message: 'Design generated with clean edges'
+        message: 'Design generated successfully'
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
