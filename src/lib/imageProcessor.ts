@@ -48,22 +48,50 @@ function twoStepUpscale(
 }
 
 /**
- * Clean up semi-transparent edge pixels for sharper edges
+ * Aggressively clean up transparency - no semi-transparent pixels allowed
  */
 function cleanEdges(canvas: HTMLCanvasElement): void {
   const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const { data, width, height } = imageData;
   
-  // Threshold alpha: below 128 becomes 0, above becomes 255
+  // First pass: hard threshold - anything below 200 alpha becomes transparent
   for (let i = 0; i < data.length; i += 4) {
     const alpha = data[i + 3];
-    if (alpha < 30) {
-      data[i + 3] = 0; // Fully transparent
-    } else if (alpha > 200) {
+    if (alpha < 200) {
+      data[i] = 0;     // R
+      data[i + 1] = 0; // G
+      data[i + 2] = 0; // B
+      data[i + 3] = 0; // A - fully transparent
+    } else {
       data[i + 3] = 255; // Fully opaque
     }
-    // Leave mid-range alphas for anti-aliasing
+  }
+  
+  // Second pass: remove isolated pixels (noise cleanup)
+  const tempData = new Uint8ClampedArray(data);
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const idx = (y * width + x) * 4;
+      if (tempData[idx + 3] === 255) {
+        // Count opaque neighbors
+        let opaqueNeighbors = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nIdx = ((y + dy) * width + (x + dx)) * 4;
+            if (tempData[nIdx + 3] === 255) opaqueNeighbors++;
+          }
+        }
+        // Remove if less than 3 opaque neighbors (isolated pixel)
+        if (opaqueNeighbors < 3) {
+          data[idx] = 0;
+          data[idx + 1] = 0;
+          data[idx + 2] = 0;
+          data[idx + 3] = 0;
+        }
+      }
+    }
   }
   
   ctx.putImageData(imageData, 0, 0);
