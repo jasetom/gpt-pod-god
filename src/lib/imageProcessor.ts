@@ -3,7 +3,74 @@ const TARGET_HEIGHT = 5400;
 const DESIGN_FILL_RATIO = 0.85;
 
 /**
- * Resize image to target dimensions, centering on canvas (single-pass for performance)
+ * Two-step upscale for better quality (max 2x per step to avoid memory issues)
+ */
+function twoStepUpscale(
+  sourceCanvas: HTMLCanvasElement,
+  srcX: number, srcY: number, srcW: number, srcH: number,
+  targetW: number, targetH: number
+): HTMLCanvasElement {
+  const scale = Math.max(targetW / srcW, targetH / srcH);
+  
+  // If scale is <= 2x, do single pass
+  if (scale <= 2) {
+    const finalCanvas = document.createElement('canvas');
+    finalCanvas.width = targetW;
+    finalCanvas.height = targetH;
+    const ctx = finalCanvas.getContext('2d')!;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(sourceCanvas, srcX, srcY, srcW, srcH, 0, 0, targetW, targetH);
+    return finalCanvas;
+  }
+  
+  // Otherwise do 2-step: first to 2x, then to final
+  const midW = Math.round(srcW * 2);
+  const midH = Math.round(srcH * 2);
+  
+  const midCanvas = document.createElement('canvas');
+  midCanvas.width = midW;
+  midCanvas.height = midH;
+  const midCtx = midCanvas.getContext('2d')!;
+  midCtx.imageSmoothingEnabled = true;
+  midCtx.imageSmoothingQuality = 'high';
+  midCtx.drawImage(sourceCanvas, srcX, srcY, srcW, srcH, 0, 0, midW, midH);
+  
+  const finalCanvas = document.createElement('canvas');
+  finalCanvas.width = targetW;
+  finalCanvas.height = targetH;
+  const finalCtx = finalCanvas.getContext('2d')!;
+  finalCtx.imageSmoothingEnabled = true;
+  finalCtx.imageSmoothingQuality = 'high';
+  finalCtx.drawImage(midCanvas, 0, 0, midW, midH, 0, 0, targetW, targetH);
+  
+  return finalCanvas;
+}
+
+/**
+ * Clean up semi-transparent edge pixels for sharper edges
+ */
+function cleanEdges(canvas: HTMLCanvasElement): void {
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const { data, width, height } = imageData;
+  
+  // Threshold alpha: below 128 becomes 0, above becomes 255
+  for (let i = 0; i < data.length; i += 4) {
+    const alpha = data[i + 3];
+    if (alpha < 30) {
+      data[i + 3] = 0; // Fully transparent
+    } else if (alpha > 200) {
+      data[i + 3] = 255; // Fully opaque
+    }
+    // Leave mid-range alphas for anti-aliasing
+  }
+  
+  ctx.putImageData(imageData, 0, 0);
+}
+
+/**
+ * Resize image to target dimensions with 2-step upscaling for quality
  */
 export async function resizeToTarget(imageBlob: Blob): Promise<Blob> {
   console.log('Processing image to target canvas:', TARGET_WIDTH, 'x', TARGET_HEIGHT);
@@ -21,7 +88,7 @@ export async function resizeToTarget(imageBlob: Blob): Promise<Blob> {
   const bounds = findContentBounds(imageData);
 
   // Crop to content with small padding
-  const padding = Math.round(Math.max(img.naturalWidth, img.naturalHeight) * 0.01);
+  const padding = Math.round(Math.max(img.naturalWidth, img.naturalHeight) * 0.02);
   const cropLeft = Math.max(0, bounds.left - padding);
   const cropTop = Math.max(0, bounds.top - padding);
   const cropRight = Math.min(tempCanvas.width - 1, bounds.right + padding);
@@ -48,28 +115,27 @@ export async function resizeToTarget(imageBlob: Blob): Promise<Blob> {
     finalContentWidth = maxContentHeight * contentRatio;
   }
 
-  // Create final canvas and draw directly (single-pass scale)
+  // Two-step upscale for better quality
+  const scaledCanvas = twoStepUpscale(
+    tempCanvas,
+    cropLeft, cropTop, contentWidth, contentHeight,
+    Math.round(finalContentWidth), Math.round(finalContentHeight)
+  );
+  
+  // Clean up edge transparency
+  cleanEdges(scaledCanvas);
+
+  // Create final canvas and center the content
   const finalCanvas = document.createElement('canvas');
   finalCanvas.width = TARGET_WIDTH;
   finalCanvas.height = TARGET_HEIGHT;
   const finalCtx = finalCanvas.getContext('2d')!;
-  
-  // Ensure transparent background
   finalCtx.clearRect(0, 0, TARGET_WIDTH, TARGET_HEIGHT);
-  
-  // High quality scaling
-  finalCtx.imageSmoothingEnabled = true;
-  finalCtx.imageSmoothingQuality = 'high';
 
-  const offsetX = Math.round((TARGET_WIDTH - finalContentWidth) / 2);
-  const offsetY = Math.round((TARGET_HEIGHT - finalContentHeight) / 2);
+  const offsetX = Math.round((TARGET_WIDTH - scaledCanvas.width) / 2);
+  const offsetY = Math.round((TARGET_HEIGHT - scaledCanvas.height) / 2);
 
-  // Draw cropped content directly to final canvas, scaled
-  finalCtx.drawImage(
-    tempCanvas,
-    cropLeft, cropTop, contentWidth, contentHeight,
-    offsetX, offsetY, Math.round(finalContentWidth), Math.round(finalContentHeight)
-  );
+  finalCtx.drawImage(scaledCanvas, offsetX, offsetY);
 
   return canvasToBlob(finalCanvas);
 }
