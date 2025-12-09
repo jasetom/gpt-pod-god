@@ -37,31 +37,28 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        prompt: `Create a professional print-on-demand t-shirt design.
+        prompt: `Create a professional print-on-demand t-shirt design illustration.
 
-CRITICAL REQUIREMENTS:
-- Use 100% SOLID, OPAQUE colors only - absolutely NO transparency or semi-transparency
-- Clean, crisp, well-defined edges around all elements
-- Flat color fills without gradients, shadows, or shading
-- High contrast colors that stand out
-- Isolated design with NO background whatsoever
+CRITICAL STYLE REQUIREMENTS:
+- Vector-style flat illustration with 100% SOLID, OPAQUE colors only
+- NO gradients, NO shadows, NO glows, NO semi-transparent effects
+- Flat color fills with NO shading or transparency
+- Clean, hard edges - no soft edges, no anti-aliasing effects, no blur
+- High contrast colors that pop against any background
+- Simple, bold shapes without fine details or textures
 
-TEXT REQUIREMENTS (if text is requested):
-- Text MUST be clearly visible and legible
-- Text should be bold and easy to read
-- Include ALL text exactly as specified in the request
-- Make text a prominent part of the design
-
-DO NOT INCLUDE:
-- Any background color or elements
-- Gradients, shadows, glows, or transparency effects
-- Soft or blurry edges
-- Semi-transparent areas or color bleeding
+ABSOLUTELY DO NOT INCLUDE:
+- Any background, shadows, or ground elements
+- Gradients or color transitions
+- Semi-transparent or translucent areas
+- Soft glows, halos, or ambient effects
 - Watermarks or artifacts
+- Faded or washed-out colors
+- Any effects that create partial transparency
 
 DESIGN REQUEST: ${prompt}
 
-Render the complete design with all requested elements including any text. Use solid opaque colors with clean edges.`,
+Create a SOLID, OPAQUE illustration with clean hard edges and no transparency effects.`,
         image_size: '1024x1024',
         background: 'transparent',
         quality: 'high',
