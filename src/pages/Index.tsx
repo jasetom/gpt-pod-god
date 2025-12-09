@@ -13,6 +13,8 @@ const Index = () => {
     download,
     isProcessing,
     getStepDescription,
+    progress,
+    progressMessage,
   } = useDesignGenerator();
 
   const getStatus = () => {
@@ -90,6 +92,8 @@ const Index = () => {
               isProcessing={isProcessing}
               onDownload={download}
               currentStepLabel={getCurrentStepLabel()}
+              progress={progress}
+              progressMessage={progressMessage}
             />
           </div>
         </div>

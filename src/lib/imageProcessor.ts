@@ -2,13 +2,20 @@ const TARGET_WIDTH = 4500;
 const TARGET_HEIGHT = 5400;
 const DESIGN_FILL_RATIO = 0.85;
 
+export type ProgressCallback = (progress: number, message: string) => void;
+
 /**
- * High-quality upscale with sharpening
+ * High-quality upscale with edge cleanup and sharpening
  */
-export async function upscaleImage(imageBlob: Blob): Promise<Blob> {
+export async function upscaleImage(
+  imageBlob: Blob, 
+  onProgress?: ProgressCallback
+): Promise<Blob> {
   console.log('Starting high-quality upscale to', TARGET_WIDTH, 'x', TARGET_HEIGHT);
+  onProgress?.(5, 'Loading image...');
 
   const img = await loadImage(imageBlob);
+  onProgress?.(10, 'Analyzing content...');
   
   // Find content bounds
   const tempCanvas = document.createElement('canvas');
@@ -19,6 +26,8 @@ export async function upscaleImage(imageBlob: Blob): Promise<Blob> {
   
   const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
   const bounds = findContentBounds(imageData);
+
+  onProgress?.(15, 'Cropping to content...');
 
   // Crop to content
   const padding = 10;
@@ -40,6 +49,11 @@ export async function upscaleImage(imageBlob: Blob): Promise<Blob> {
     0, 0, contentWidth, contentHeight
   );
 
+  onProgress?.(20, 'Cleaning up edges...');
+  
+  // Clean up frizzy edges BEFORE upscaling
+  cleanAlphaEdges(croppedCanvas, 2);
+
   // Calculate target size
   const maxContentWidth = TARGET_WIDTH * DESIGN_FILL_RATIO;
   const maxContentHeight = TARGET_HEIGHT * DESIGN_FILL_RATIO;
@@ -58,12 +72,16 @@ export async function upscaleImage(imageBlob: Blob): Promise<Blob> {
     finalContentWidth = maxContentHeight * contentRatio;
   }
 
-  // Multi-step upscaling for quality (1.4x increments)
+  onProgress?.(30, 'Upscaling image...');
+
+  // Multi-step upscaling for quality (smaller increments for better quality)
   let currentCanvas = croppedCanvas;
   let currentWidth = contentWidth;
   let currentHeight = contentHeight;
 
-  const maxStepScale = 1.4;
+  const maxStepScale = 1.3; // Smaller steps = better quality
+  let stepCount = 0;
+  const totalSteps = Math.ceil(Math.log(finalContentWidth / currentWidth) / Math.log(maxStepScale));
   
   while (currentWidth < finalContentWidth * 0.98 || currentHeight < finalContentHeight * 0.98) {
     const scaleX = finalContentWidth / currentWidth;
@@ -85,10 +103,25 @@ export async function upscaleImage(imageBlob: Blob): Promise<Blob> {
     currentCanvas = nextCanvas;
     currentWidth = targetW;
     currentHeight = targetH;
+    
+    stepCount++;
+    const upscaleProgress = 30 + (stepCount / totalSteps) * 40;
+    onProgress?.(Math.min(70, upscaleProgress), `Upscaling step ${stepCount}...`);
   }
 
-  // Apply sharpening
-  currentCanvas = sharpenCanvas(currentCanvas, 0.4);
+  onProgress?.(75, 'Enhancing sharpness...');
+
+  // Apply enhanced sharpening with multiple passes
+  currentCanvas = sharpenCanvas(currentCanvas, 0.3);
+  onProgress?.(80, 'Applying second sharpening pass...');
+  currentCanvas = sharpenCanvas(currentCanvas, 0.15);
+
+  onProgress?.(85, 'Final edge cleanup...');
+  
+  // Final edge cleanup after upscaling
+  cleanAlphaEdges(currentCanvas, 1);
+
+  onProgress?.(90, 'Compositing final image...');
 
   // Final canvas centered
   const finalCanvas = document.createElement('canvas');
@@ -105,9 +138,90 @@ export async function upscaleImage(imageBlob: Blob): Promise<Blob> {
 
   finalCtx.drawImage(currentCanvas, offsetX, offsetY, currentWidth, currentHeight);
 
-  return canvasToBlob(finalCanvas);
+  onProgress?.(95, 'Generating final PNG...');
+  
+  const result = await canvasToBlob(finalCanvas);
+  onProgress?.(100, 'Complete!');
+  
+  return result;
 }
 
+/**
+ * Clean up frizzy/semi-transparent edges
+ * This removes the "fringing" around transparent edges
+ */
+function cleanAlphaEdges(canvas: HTMLCanvasElement, iterations: number = 2): void {
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const { data, width, height } = imageData;
+  
+  for (let iter = 0; iter < iterations; iter++) {
+    const result = new Uint8ClampedArray(data);
+    
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const idx = (y * width + x) * 4;
+        const alpha = data[idx + 3];
+        
+        // Target semi-transparent pixels (fringe)
+        if (alpha > 10 && alpha < 240) {
+          // Count neighbors with high alpha
+          let solidNeighbors = 0;
+          let transparentNeighbors = 0;
+          let avgR = 0, avgG = 0, avgB = 0;
+          let solidCount = 0;
+          
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              if (dx === 0 && dy === 0) continue;
+              const nIdx = ((y + dy) * width + (x + dx)) * 4;
+              const nAlpha = data[nIdx + 3];
+              
+              if (nAlpha > 200) {
+                solidNeighbors++;
+                avgR += data[nIdx];
+                avgG += data[nIdx + 1];
+                avgB += data[nIdx + 2];
+                solidCount++;
+              } else if (nAlpha < 30) {
+                transparentNeighbors++;
+              }
+            }
+          }
+          
+          // If mostly surrounded by transparent, make fully transparent
+          if (transparentNeighbors >= 5) {
+            result[idx + 3] = 0;
+          }
+          // If mostly surrounded by solid, make solid and blend color
+          else if (solidNeighbors >= 5 && solidCount > 0) {
+            result[idx] = Math.round(avgR / solidCount);
+            result[idx + 1] = Math.round(avgG / solidCount);
+            result[idx + 2] = Math.round(avgB / solidCount);
+            result[idx + 3] = 255;
+          }
+          // Edge case: threshold the alpha
+          else if (alpha < 128) {
+            result[idx + 3] = 0;
+          } else {
+            result[idx + 3] = 255;
+          }
+        }
+      }
+    }
+    
+    // Copy result back
+    for (let i = 0; i < data.length; i++) {
+      data[i] = result[i];
+    }
+  }
+  
+  ctx.putImageData(imageData, 0, 0);
+}
+
+/**
+ * Enhanced sharpening using unsharp mask technique
+ */
 function sharpenCanvas(canvas: HTMLCanvasElement, strength: number = 0.3): HTMLCanvasElement {
   const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -115,25 +229,40 @@ function sharpenCanvas(canvas: HTMLCanvasElement, strength: number = 0.3): HTMLC
   
   const result = new Uint8ClampedArray(data);
   
-  for (let y = 1; y < height - 1; y++) {
-    for (let x = 1; x < width - 1; x++) {
+  // Use a 5x5 kernel for smoother sharpening
+  const kernel = [
+    0, -1, -1, -1, 0,
+    -1, 2, -4, 2, -1,
+    -1, -4, 24, -4, -1,
+    -1, 2, -4, 2, -1,
+    0, -1, -1, -1, 0
+  ];
+  const kernelSum = 8;
+  
+  for (let y = 2; y < height - 2; y++) {
+    for (let x = 2; x < width - 2; x++) {
       const idx = (y * width + x) * 4;
       
       // Skip transparent pixels
       if (data[idx + 3] < 10) continue;
       
       for (let c = 0; c < 3; c++) {
-        const center = data[idx + c];
+        let sum = 0;
+        let ki = 0;
         
-        const top = data[((y - 1) * width + x) * 4 + c];
-        const bottom = data[((y + 1) * width + x) * 4 + c];
-        const left = data[(y * width + x - 1) * 4 + c];
-        const right = data[(y * width + x + 1) * 4 + c];
+        for (let ky = -2; ky <= 2; ky++) {
+          for (let kx = -2; kx <= 2; kx++) {
+            const nIdx = ((y + ky) * width + (x + kx)) * 4 + c;
+            sum += data[nIdx] * kernel[ki];
+            ki++;
+          }
+        }
         
-        // Laplacian
-        const laplacian = 4 * center - top - bottom - left - right;
+        const sharpened = sum / kernelSum;
+        const original = data[idx + c];
+        const blended = original + (sharpened - original) * strength;
         
-        result[idx + c] = Math.max(0, Math.min(255, center + laplacian * strength));
+        result[idx + c] = Math.max(0, Math.min(255, Math.round(blended)));
       }
     }
   }
