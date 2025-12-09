@@ -9,6 +9,7 @@ const Index = () => {
     step,
     currentStepIndex,
     previewUrl,
+    rawPreviewUrl,
     generate,
     download,
     isProcessing,
@@ -85,8 +86,21 @@ const Index = () => {
             </div>
           </div>
 
-          {/* Right: Preview */}
-          <div>
+          {/* Right: Previews */}
+          <div className="space-y-6">
+            {/* Raw GPT Image Preview (Debug) */}
+            <ImagePreview
+              imageUrl={rawPreviewUrl}
+              isProcessing={isProcessing && !rawPreviewUrl}
+              onDownload={() => {}}
+              currentStepLabel={getCurrentStepLabel()}
+              progress={progress}
+              progressMessage={progressMessage}
+              title="GPT Image (Raw Output)"
+              hideDownload
+            />
+            
+            {/* Final Processed Preview */}
             <ImagePreview
               imageUrl={previewUrl}
               isProcessing={isProcessing}
@@ -94,6 +108,7 @@ const Index = () => {
               currentStepLabel={getCurrentStepLabel()}
               progress={progress}
               progressMessage={progressMessage}
+              title="After Final Processing"
             />
           </div>
         </div>
