@@ -149,7 +149,7 @@ function findContentBounds(imageData: ImageData): { left: number; top: number; r
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const alpha = data[(y * width + x) * 4 + 3];
-      if (alpha > 25) {
+      if (alpha > 15) {
         if (x < left) left = x;
         if (x > right) right = x;
         if (y < top) top = y;

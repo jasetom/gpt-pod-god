@@ -156,7 +156,7 @@ Produce a print-ready transparent PNG with:
 ### DESIGN REQUEST:
 
 ${sanitizedPrompt}`,
-        image_size: '1024x1024',
+        image_size: '768x1024',
         background: 'transparent',
         quality: 'high',
         num_images: 1,
