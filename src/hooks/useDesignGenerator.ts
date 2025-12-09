@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { downloadImage, resizeToTarget } from '@/lib/imageProcessor';
+import { downloadImage, resizeToTarget, processWithAlphaPreservation } from '@/lib/imageProcessor';
 import { toast } from 'sonner';
 
 export type GenerationStep = 
@@ -20,17 +20,17 @@ export type StepInfo = {
 
 export const STEPS: StepInfo[] = [
   { id: 'generating', label: 'Generating', description: 'Creating your design' },
-  { id: 'refining', label: 'Refining', description: 'Cleaning up edges' },
-  { id: 'upscaling', label: 'Upscaling', description: 'Scaling to print size' },
+  { id: 'upscaling', label: 'AI Upscaling', description: 'Enhancing quality' },
+  { id: 'processing', label: 'Processing', description: 'Preparing print file' },
   { id: 'complete', label: 'Complete', description: 'Ready to download' },
 ];
 
-// Expected total time ~50 seconds, distribute progress smoothly
-const EXPECTED_TOTAL_TIME_MS = 50000;
+// Expected total time ~60 seconds with AI upscaling
+const EXPECTED_TOTAL_TIME_MS = 60000;
 const STEP_PROGRESS: Record<string, { start: number; end: number }> = {
-  generating: { start: 0, end: 60 },
-  refining: { start: 60, end: 72 },
-  upscaling: { start: 72, end: 95 },
+  generating: { start: 0, end: 50 },
+  upscaling: { start: 50, end: 75 },
+  processing: { start: 75, end: 95 },
   finalizing: { start: 95, end: 100 },
 };
 
@@ -75,35 +75,33 @@ export function useDesignGenerator() {
 
       // Time-based progress simulation for smooth, predictable updates
       const startTime = Date.now();
-      const serverPhaseEnd = 72; // Server handles generation + refining up to 72%
-      const serverExpectedTime = EXPECTED_TOTAL_TIME_MS * 0.85; // ~42 seconds for server phase
+      const serverPhaseEnd = 75; // Server handles generation + AI upscaling up to 75%
+      const serverExpectedTime = EXPECTED_TOTAL_TIME_MS * 0.80; // ~48 seconds for server phase
       
       const messages = [
         { at: 0, msg: 'Starting design creation...' },
-        { at: 8, msg: 'Preparing your design...' },
-        { at: 18, msg: 'Creating visual elements...' },
-        { at: 30, msg: 'Adding details and colors...' },
-        { at: 42, msg: 'Finishing illustration...' },
-        { at: 55, msg: 'Cleaning up edges...' },
-        { at: 62, msg: 'Improving transparency...' },
-        { at: 68, msg: 'Finalizing quality...' },
+        { at: 10, msg: 'Preparing your design...' },
+        { at: 20, msg: 'Creating visual elements...' },
+        { at: 32, msg: 'Adding details and colors...' },
+        { at: 45, msg: 'Finishing illustration...' },
+        { at: 52, msg: 'AI upscaling in progress...' },
+        { at: 62, msg: 'Enhancing image quality...' },
+        { at: 70, msg: 'Finalizing high-res output...' },
       ];
       
       let lastMsgIndex = -1;
 
       progressInterval = setInterval(() => {
         const elapsed = Date.now() - startTime;
-        // Use logarithmic easing so it slows down as it approaches the cap
         const rawProgress = (elapsed / serverExpectedTime) * serverPhaseEnd;
-        // Cap at 70% to leave room before server responds
         const cappedProgress = Math.min(rawProgress * (1 - rawProgress / 200), serverPhaseEnd - 2);
         const displayProgress = Math.max(0, Math.min(Math.round(cappedProgress), serverPhaseEnd - 2));
         
         setProgress(displayProgress);
         
         // Update step based on progress
-        if (displayProgress >= 55 && step === 'generating') {
-          setStep('refining');
+        if (displayProgress >= 50 && step === 'generating') {
+          setStep('upscaling');
           setCurrentStepIndex(1);
         }
         
@@ -129,31 +127,52 @@ export function useDesignGenerator() {
       if (data.error) throw new Error(data.error);
       if (!data.imageUrl) throw new Error('No image received');
 
-      setProgress(73);
-      setProgressMessage('Scaling to print resolution...');
+      setProgress(76);
+      setProgressMessage('Processing transparency...');
       setStep('upscaling');
       setCurrentStepIndex(2);
 
-      // Convert base64 to blob
-      const base64Data = data.imageUrl.split(',')[1];
-      const binaryData = atob(base64Data);
-      const bytes = new Uint8Array(binaryData.length);
-      for (let i = 0; i < binaryData.length; i++) {
-        bytes[i] = binaryData.charCodeAt(i);
+      // Convert upscaled image base64 to blob
+      const upscaledBase64 = data.imageUrl.split(',')[1];
+      const upscaledBinary = atob(upscaledBase64);
+      const upscaledBytes = new Uint8Array(upscaledBinary.length);
+      for (let i = 0; i < upscaledBinary.length; i++) {
+        upscaledBytes[i] = upscaledBinary.charCodeAt(i);
       }
-      let imageBlob = new Blob([bytes], { type: 'image/png' });
+      const upscaledBlob = new Blob([upscaledBytes], { type: 'image/png' });
 
-      setProgress(82);
-      setProgressMessage('Preparing high-resolution output...');
+      // Convert original image base64 to blob (for alpha extraction)
+      let processedBlob: Blob;
+      
+      if (data.originalImageUrl) {
+        const originalBase64 = data.originalImageUrl.split(',')[1];
+        const originalBinary = atob(originalBase64);
+        const originalBytes = new Uint8Array(originalBinary.length);
+        for (let i = 0; i < originalBinary.length; i++) {
+          originalBytes[i] = originalBinary.charCodeAt(i);
+        }
+        const originalBlob = new Blob([originalBytes], { type: 'image/png' });
+        
+        setProgress(82);
+        setProgressMessage('Preserving transparency...');
+        
+        // Process with alpha preservation
+        processedBlob = await processWithAlphaPreservation(upscaledBlob, originalBlob);
+      } else {
+        processedBlob = upscaledBlob;
+      }
+
+      setProgress(88);
+      setProgressMessage('Preparing print file...');
 
       // Resize to target dimensions
-      imageBlob = await resizeToTarget(imageBlob);
+      const finalBlob = await resizeToTarget(processedBlob);
       
       setProgress(95);
       setProgressMessage('Almost done...');
       
-      setPreviewUrl(URL.createObjectURL(imageBlob));
-      setFinalBlob(imageBlob);
+      setPreviewUrl(URL.createObjectURL(finalBlob));
+      setFinalBlob(finalBlob);
 
       // Complete
       setStep('complete');
