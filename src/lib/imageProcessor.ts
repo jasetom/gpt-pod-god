@@ -48,52 +48,23 @@ function twoStepUpscale(
 }
 
 /**
- * Aggressively clean up all semi-transparent and artifact pixels
- * Removes colored semi-transparent pixels (like green blobs between letters)
+ * Light cleanup - only remove fully transparent noise without touching semi-transparent edges
  */
 function cleanEdges(canvas: HTMLCanvasElement): void {
   const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const { data, width, height } = imageData;
   
-  // First pass: hard threshold - anything below 240 alpha becomes fully transparent
-  // This catches colored semi-transparent artifacts (like green between letters)
+  // Only zero out RGB for pixels that are nearly transparent (anti-aliasing cleanup)
+  // This prevents colored fringe but preserves the design
   for (let i = 0; i < data.length; i += 4) {
     const alpha = data[i + 3];
-    if (alpha < 240) {
-      // Make fully transparent - zero out all channels
-      data[i] = 0;     // R
-      data[i + 1] = 0; // G
-      data[i + 2] = 0; // B
-      data[i + 3] = 0; // A
-    } else {
-      data[i + 3] = 255; // Fully opaque
-    }
-  }
-  
-  // Second pass: remove small isolated pixel clusters (noise cleanup)
-  const tempData = new Uint8ClampedArray(data);
-  for (let y = 2; y < height - 2; y++) {
-    for (let x = 2; x < width - 2; x++) {
-      const idx = (y * width + x) * 4;
-      if (tempData[idx + 3] === 255) {
-        // Count opaque neighbors in 5x5 area
-        let opaqueNeighbors = 0;
-        for (let dy = -2; dy <= 2; dy++) {
-          for (let dx = -2; dx <= 2; dx++) {
-            if (dx === 0 && dy === 0) continue;
-            const nIdx = ((y + dy) * width + (x + dx)) * 4;
-            if (tempData[nIdx + 3] === 255) opaqueNeighbors++;
-          }
-        }
-        // Remove if less than 8 opaque neighbors in 5x5 (isolated small cluster)
-        if (opaqueNeighbors < 8) {
-          data[idx] = 0;
-          data[idx + 1] = 0;
-          data[idx + 2] = 0;
-          data[idx + 3] = 0;
-        }
-      }
+    if (alpha < 10) {
+      // Nearly transparent - zero out color to prevent any color bleeding
+      data[i] = 0;
+      data[i + 1] = 0;
+      data[i + 2] = 0;
+      data[i + 3] = 0;
     }
   }
   
