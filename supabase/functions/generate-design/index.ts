@@ -15,9 +15,36 @@ serve(async (req) => {
   try {
     const { prompt } = await req.json();
     
+    // Validate prompt exists
     if (!prompt) {
       return new Response(
         JSON.stringify({ error: 'Prompt is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate prompt type
+    if (typeof prompt !== 'string') {
+      return new Response(
+        JSON.stringify({ error: 'Prompt must be a string' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Sanitize and validate prompt length
+    const sanitizedPrompt = prompt.trim();
+    const MAX_PROMPT_LENGTH = 500;
+    
+    if (sanitizedPrompt.length === 0) {
+      return new Response(
+        JSON.stringify({ error: 'Prompt cannot be empty' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (sanitizedPrompt.length > MAX_PROMPT_LENGTH) {
+      return new Response(
+        JSON.stringify({ error: `Prompt too long (max ${MAX_PROMPT_LENGTH} characters)` }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -97,7 +124,7 @@ Produce a print-ready transparent PNG with:
 * Clean silhouette
 * Strong visibility on dark POD garments
 
-DESIGN REQUEST: ${prompt}`,
+DESIGN REQUEST: ${sanitizedPrompt}`,
         image_size: '1024x1024',
         background: 'transparent',
         quality: 'high',
