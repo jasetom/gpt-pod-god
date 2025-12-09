@@ -1,12 +1,11 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { removeBackground, upscaleImage, downloadImage } from '@/lib/imageProcessor';
+import { upscaleImage, downloadImage } from '@/lib/imageProcessor';
 import { toast } from 'sonner';
 
 export type GenerationStep = 
   | 'idle'
   | 'generating'
-  | 'removing-background'
   | 'upscaling'
   | 'complete'
   | 'error';
@@ -18,8 +17,7 @@ export type StepInfo = {
 };
 
 export const STEPS: StepInfo[] = [
-  { id: 'generating', label: 'Generating', description: 'AI creates your design' },
-  { id: 'removing-background', label: 'Background', description: 'Removing background' },
+  { id: 'generating', label: 'Generating', description: 'AI creates your design with transparent background' },
   { id: 'upscaling', label: 'Upscaling', description: 'Scaling to 4500×5400' },
   { id: 'complete', label: 'Complete', description: 'Ready to download' },
 ];
@@ -30,7 +28,6 @@ export function useDesignGenerator() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [finalBlob, setFinalBlob] = useState<Blob | null>(null);
   const [prompt, setPrompt] = useState('');
-  const [backgroundProgress, setBackgroundProgress] = useState(0);
 
   const reset = useCallback(() => {
     setStep('idle');
@@ -38,7 +35,6 @@ export function useDesignGenerator() {
     setPreviewUrl(null);
     setFinalBlob(null);
     setPrompt('');
-    setBackgroundProgress(0);
   }, []);
 
   const generate = useCallback(async (inputPrompt: string) => {
@@ -47,7 +43,6 @@ export function useDesignGenerator() {
     setCurrentStepIndex(-1);
     setPreviewUrl(null);
     setFinalBlob(null);
-    setBackgroundProgress(0);
     
     // Small delay to ensure state is cleared
     await new Promise(resolve => setTimeout(resolve, 50));
@@ -57,8 +52,8 @@ export function useDesignGenerator() {
       setStep('generating');
       setCurrentStepIndex(0);
 
-      // Step 1: Generate the image
-      console.log('Step 1: Generating image...');
+      // Step 1: Generate the image with transparent background using Fal.ai + gpt-image-1
+      console.log('Step 1: Generating image with Fal.ai + gpt-image-1 (transparent background)...');
       const { data, error } = await supabase.functions.invoke('generate-design', {
         body: { prompt: inputPrompt }
       });
@@ -76,31 +71,14 @@ export function useDesignGenerator() {
       }
       let imageBlob = new Blob([bytes], { type: 'image/png' });
 
-      // Show initial preview
+      // Show initial preview (already has transparent background)
       setPreviewUrl(URL.createObjectURL(imageBlob));
-      toast.success('Design generated!');
+      toast.success('Design generated with transparent background!');
 
-      // Step 2: Remove background with in-browser ML model
-      setStep('removing-background');
-      setCurrentStepIndex(1);
-      console.log('Step 2: Removing background with ML model...');
-      
-      try {
-        imageBlob = await removeBackground(imageBlob, (progress) => {
-          setBackgroundProgress(progress);
-        });
-        setPreviewUrl(URL.createObjectURL(imageBlob));
-        toast.success('Background removed!');
-      } catch (bgError) {
-        console.error('Background removal failed:', bgError);
-        toast.error('Background removal failed - continuing with original');
-        // Continue with the original image if background removal fails
-      }
-
-      // Step 3: Upscale
+      // Step 2: Upscale
       setStep('upscaling');
-      setCurrentStepIndex(2);
-      console.log('Step 3: Upscaling to 4500x5400...');
+      setCurrentStepIndex(1);
+      console.log('Step 2: Upscaling to 4500x5400...');
       
       imageBlob = await upscaleImage(imageBlob);
       setPreviewUrl(URL.createObjectURL(imageBlob));
@@ -109,7 +87,7 @@ export function useDesignGenerator() {
 
       // Complete
       setStep('complete');
-      setCurrentStepIndex(3);
+      setCurrentStepIndex(2);
       toast.success('Your design is ready to download!');
 
     } catch (error) {
@@ -129,14 +107,11 @@ export function useDesignGenerator() {
   }, [finalBlob]);
 
   const getStepDescription = useCallback(() => {
-    if (step === 'removing-background' && backgroundProgress > 0) {
-      return `Removing background (${backgroundProgress}%)`;
-    }
     if (currentStepIndex >= 0 && currentStepIndex < STEPS.length) {
       return STEPS[currentStepIndex].description;
     }
     return undefined;
-  }, [step, backgroundProgress, currentStepIndex]);
+  }, [currentStepIndex]);
 
   return {
     step,
@@ -144,7 +119,6 @@ export function useDesignGenerator() {
     previewUrl,
     finalBlob,
     prompt,
-    backgroundProgress,
     generate,
     download,
     reset,
