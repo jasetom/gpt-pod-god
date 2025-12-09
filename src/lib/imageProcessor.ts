@@ -1,6 +1,113 @@
+import { pipeline, env } from '@huggingface/transformers';
+
+// Configure transformers.js
+env.allowLocalModels = false;
+env.useBrowserCache = true;
+
 const TARGET_WIDTH = 4500;
 const TARGET_HEIGHT = 5400;
 const DESIGN_FILL_RATIO = 0.85;
+const MAX_IMAGE_DIMENSION = 1024;
+
+let segmenter: any = null;
+
+/**
+ * Remove background using in-browser ML model
+ */
+export async function removeBackground(
+  imageBlob: Blob,
+  onProgress?: (progress: number) => void
+): Promise<Blob> {
+  console.log('Starting in-browser background removal...');
+  onProgress?.(5);
+
+  // Load the segmentation model (cached after first load)
+  if (!segmenter) {
+    console.log('Loading segmentation model...');
+    onProgress?.(10);
+    segmenter = await pipeline('image-segmentation', 'Xenova/segformer-b0-finetuned-ade-512-512', {
+      device: 'webgpu',
+    });
+  }
+  onProgress?.(30);
+
+  // Load and prepare image
+  const img = await loadImage(imageBlob);
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) throw new Error('Could not get canvas context');
+
+  // Resize if needed
+  let width = img.naturalWidth;
+  let height = img.naturalHeight;
+
+  if (width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION) {
+    if (width > height) {
+      height = Math.round((height * MAX_IMAGE_DIMENSION) / width);
+      width = MAX_IMAGE_DIMENSION;
+    } else {
+      width = Math.round((width * MAX_IMAGE_DIMENSION) / height);
+      height = MAX_IMAGE_DIMENSION;
+    }
+  }
+
+  canvas.width = width;
+  canvas.height = height;
+  ctx.drawImage(img, 0, 0, width, height);
+  onProgress?.(40);
+
+  // Get image data as base64
+  const imageData = canvas.toDataURL('image/jpeg', 0.9);
+  console.log('Processing with segmentation model...');
+
+  // Process the image
+  const result = await segmenter(imageData);
+  onProgress?.(70);
+
+  if (!result || !Array.isArray(result) || result.length === 0 || !result[0].mask) {
+    throw new Error('Invalid segmentation result');
+  }
+
+  // Create output canvas
+  const outputCanvas = document.createElement('canvas');
+  outputCanvas.width = canvas.width;
+  outputCanvas.height = canvas.height;
+  const outputCtx = outputCanvas.getContext('2d');
+  if (!outputCtx) throw new Error('Could not get output canvas context');
+
+  // Draw original image
+  outputCtx.drawImage(canvas, 0, 0);
+
+  // Apply the mask
+  const outputImageData = outputCtx.getImageData(0, 0, outputCanvas.width, outputCanvas.height);
+  const data = outputImageData.data;
+
+  // Invert mask to keep subject instead of background
+  for (let i = 0; i < result[0].mask.data.length; i++) {
+    const alpha = Math.round((1 - result[0].mask.data[i]) * 255);
+    data[i * 4 + 3] = alpha;
+  }
+
+  outputCtx.putImageData(outputImageData, 0, 0);
+  onProgress?.(90);
+
+  console.log('Background removal complete');
+
+  return new Promise((resolve, reject) => {
+    outputCanvas.toBlob(
+      (blob) => {
+        if (blob) {
+          onProgress?.(100);
+          resolve(blob);
+        } else {
+          reject(new Error('Failed to create blob'));
+        }
+      },
+      'image/png',
+      1.0
+    );
+  });
+}
 
 /**
  * High-quality upscale with sharpening
