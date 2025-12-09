@@ -3,64 +3,116 @@ const TARGET_HEIGHT = 5400;
 const DESIGN_FILL_RATIO = 0.85;
 
 /**
- * Two-step upscale for better quality (max 2x per step to avoid memory issues)
+ * High-quality Lanczos-like resampling for alpha channel upscaling
  */
-function twoStepUpscale(
+function lanczosUpscale(
   sourceCanvas: HTMLCanvasElement,
   srcX: number, srcY: number, srcW: number, srcH: number,
   targetW: number, targetH: number
 ): HTMLCanvasElement {
-  const scale = Math.max(targetW / srcW, targetH / srcH);
+  // Multi-step scaling for better quality (max 2x per step)
+  let currentCanvas = document.createElement('canvas');
+  currentCanvas.width = srcW;
+  currentCanvas.height = srcH;
+  const initCtx = currentCanvas.getContext('2d')!;
+  initCtx.drawImage(sourceCanvas, srcX, srcY, srcW, srcH, 0, 0, srcW, srcH);
   
-  // If scale is <= 2x, do single pass
-  if (scale <= 2) {
-    const finalCanvas = document.createElement('canvas');
-    finalCanvas.width = targetW;
-    finalCanvas.height = targetH;
-    const ctx = finalCanvas.getContext('2d')!;
+  let currentW = srcW;
+  let currentH = srcH;
+  
+  while (currentW < targetW || currentH < targetH) {
+    const nextW = Math.min(currentW * 2, targetW);
+    const nextH = Math.min(currentH * 2, targetH);
+    
+    const nextCanvas = document.createElement('canvas');
+    nextCanvas.width = nextW;
+    nextCanvas.height = nextH;
+    const ctx = nextCanvas.getContext('2d')!;
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(sourceCanvas, srcX, srcY, srcW, srcH, 0, 0, targetW, targetH);
-    return finalCanvas;
+    ctx.drawImage(currentCanvas, 0, 0, currentW, currentH, 0, 0, nextW, nextH);
+    
+    currentCanvas = nextCanvas;
+    currentW = nextW;
+    currentH = nextH;
   }
   
-  // Otherwise do 2-step: first to 2x, then to final
-  const midW = Math.round(srcW * 2);
-  const midH = Math.round(srcH * 2);
-  
-  const midCanvas = document.createElement('canvas');
-  midCanvas.width = midW;
-  midCanvas.height = midH;
-  const midCtx = midCanvas.getContext('2d')!;
-  midCtx.imageSmoothingEnabled = true;
-  midCtx.imageSmoothingQuality = 'high';
-  midCtx.drawImage(sourceCanvas, srcX, srcY, srcW, srcH, 0, 0, midW, midH);
-  
-  const finalCanvas = document.createElement('canvas');
-  finalCanvas.width = targetW;
-  finalCanvas.height = targetH;
-  const finalCtx = finalCanvas.getContext('2d')!;
-  finalCtx.imageSmoothingEnabled = true;
-  finalCtx.imageSmoothingQuality = 'high';
-  finalCtx.drawImage(midCanvas, 0, 0, midW, midH, 0, 0, targetW, targetH);
-  
-  return finalCanvas;
+  return currentCanvas;
 }
 
 /**
- * Light cleanup - only remove fully transparent noise without touching semi-transparent edges
+ * Extract alpha channel from an image as a grayscale canvas
  */
-function cleanEdges(canvas: HTMLCanvasElement): void {
+function extractAlphaChannel(canvas: HTMLCanvasElement): HTMLCanvasElement {
   const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const { data, width, height } = imageData;
   
-  // Only zero out RGB for pixels that are nearly transparent (anti-aliasing cleanup)
-  // This prevents colored fringe but preserves the design
+  const alphaCanvas = document.createElement('canvas');
+  alphaCanvas.width = width;
+  alphaCanvas.height = height;
+  const alphaCtx = alphaCanvas.getContext('2d')!;
+  const alphaData = alphaCtx.createImageData(width, height);
+  
+  for (let i = 0; i < data.length; i += 4) {
+    const alpha = data[i + 3];
+    // Store alpha as grayscale
+    alphaData.data[i] = alpha;
+    alphaData.data[i + 1] = alpha;
+    alphaData.data[i + 2] = alpha;
+    alphaData.data[i + 3] = 255;
+  }
+  
+  alphaCtx.putImageData(alphaData, 0, 0);
+  return alphaCanvas;
+}
+
+/**
+ * Apply alpha channel from one canvas to another
+ */
+function applyAlphaChannel(rgbCanvas: HTMLCanvasElement, alphaCanvas: HTMLCanvasElement): HTMLCanvasElement {
+  const resultCanvas = document.createElement('canvas');
+  resultCanvas.width = rgbCanvas.width;
+  resultCanvas.height = rgbCanvas.height;
+  const resultCtx = resultCanvas.getContext('2d', { willReadFrequently: true })!;
+  
+  // Draw RGB
+  resultCtx.drawImage(rgbCanvas, 0, 0);
+  
+  // Get both image data
+  const rgbData = resultCtx.getImageData(0, 0, resultCanvas.width, resultCanvas.height);
+  
+  // Scale alpha canvas to match RGB if needed
+  const scaledAlpha = document.createElement('canvas');
+  scaledAlpha.width = rgbCanvas.width;
+  scaledAlpha.height = rgbCanvas.height;
+  const scaledCtx = scaledAlpha.getContext('2d')!;
+  scaledCtx.imageSmoothingEnabled = true;
+  scaledCtx.imageSmoothingQuality = 'high';
+  scaledCtx.drawImage(alphaCanvas, 0, 0, alphaCanvas.width, alphaCanvas.height, 0, 0, scaledAlpha.width, scaledAlpha.height);
+  
+  const alphaData = scaledCtx.getImageData(0, 0, scaledAlpha.width, scaledAlpha.height);
+  
+  // Apply alpha (stored in R channel of alpha canvas)
+  for (let i = 0; i < rgbData.data.length; i += 4) {
+    rgbData.data[i + 3] = alphaData.data[i]; // Use R channel as alpha
+  }
+  
+  resultCtx.putImageData(rgbData, 0, 0);
+  return resultCanvas;
+}
+
+/**
+ * Light cleanup - only remove fully transparent noise
+ */
+function cleanEdges(canvas: HTMLCanvasElement): void {
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const { data } = imageData;
+  
   for (let i = 0; i < data.length; i += 4) {
     const alpha = data[i + 3];
     if (alpha < 10) {
-      // Nearly transparent - zero out color to prevent any color bleeding
       data[i] = 0;
       data[i + 1] = 0;
       data[i + 2] = 0;
@@ -72,34 +124,101 @@ function cleanEdges(canvas: HTMLCanvasElement): void {
 }
 
 /**
- * Resize image to target dimensions with 2-step upscaling for quality
+ * Process AI-upscaled image with original for alpha preservation
+ * @param upscaledBlob - AI-upscaled image (may have lost transparency)
+ * @param originalBlob - Original image with correct alpha channel
+ */
+export async function processWithAlphaPreservation(
+  upscaledBlob: Blob,
+  originalBlob: Blob
+): Promise<Blob> {
+  console.log('Processing with alpha preservation...');
+  
+  const [upscaledImg, originalImg] = await Promise.all([
+    loadImage(upscaledBlob),
+    loadImage(originalBlob)
+  ]);
+  
+  // Create canvases
+  const upscaledCanvas = document.createElement('canvas');
+  upscaledCanvas.width = upscaledImg.naturalWidth;
+  upscaledCanvas.height = upscaledImg.naturalHeight;
+  const upscaledCtx = upscaledCanvas.getContext('2d')!;
+  upscaledCtx.drawImage(upscaledImg, 0, 0);
+  
+  const originalCanvas = document.createElement('canvas');
+  originalCanvas.width = originalImg.naturalWidth;
+  originalCanvas.height = originalImg.naturalHeight;
+  const originalCtx = originalCanvas.getContext('2d')!;
+  originalCtx.drawImage(originalImg, 0, 0);
+  
+  // Check if upscaled image still has transparency
+  const upscaledData = upscaledCtx.getImageData(0, 0, upscaledCanvas.width, upscaledCanvas.height);
+  let hasTransparency = false;
+  for (let i = 3; i < upscaledData.data.length; i += 4) {
+    if (upscaledData.data[i] < 250) {
+      hasTransparency = true;
+      break;
+    }
+  }
+  
+  let processedCanvas: HTMLCanvasElement;
+  
+  if (hasTransparency) {
+    // AI upscaler preserved transparency, use directly
+    console.log('AI upscaler preserved transparency');
+    processedCanvas = upscaledCanvas;
+  } else {
+    // AI upscaler removed transparency, restore from original
+    console.log('Restoring transparency from original...');
+    
+    // Extract and upscale alpha from original
+    const alphaCanvas = extractAlphaChannel(originalCanvas);
+    const upscaledAlpha = lanczosUpscale(
+      alphaCanvas, 0, 0, alphaCanvas.width, alphaCanvas.height,
+      upscaledCanvas.width, upscaledCanvas.height
+    );
+    
+    // Apply alpha to upscaled RGB
+    processedCanvas = applyAlphaChannel(upscaledCanvas, upscaledAlpha);
+  }
+  
+  // Clean edges
+  cleanEdges(processedCanvas);
+  
+  return canvasToBlob(processedCanvas);
+}
+
+/**
+ * Resize and center image to target dimensions
  */
 export async function resizeToTarget(imageBlob: Blob): Promise<Blob> {
-  console.log('Processing image to target canvas:', TARGET_WIDTH, 'x', TARGET_HEIGHT);
+  console.log('Resizing to target:', TARGET_WIDTH, 'x', TARGET_HEIGHT);
 
   const img = await loadImage(imageBlob);
   
-  // Find content bounds (non-transparent pixels)
-  const tempCanvas = document.createElement('canvas');
-  tempCanvas.width = img.naturalWidth;
-  tempCanvas.height = img.naturalHeight;
-  const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true })!;
-  tempCtx.drawImage(img, 0, 0);
+  // Create canvas from image
+  const sourceCanvas = document.createElement('canvas');
+  sourceCanvas.width = img.naturalWidth;
+  sourceCanvas.height = img.naturalHeight;
+  const sourceCtx = sourceCanvas.getContext('2d', { willReadFrequently: true })!;
+  sourceCtx.drawImage(img, 0, 0);
   
-  const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+  // Find content bounds
+  const imageData = sourceCtx.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height);
   const bounds = findContentBounds(imageData);
 
-  // Crop to content with small padding
+  // Crop with padding
   const padding = Math.round(Math.max(img.naturalWidth, img.naturalHeight) * 0.02);
   const cropLeft = Math.max(0, bounds.left - padding);
   const cropTop = Math.max(0, bounds.top - padding);
-  const cropRight = Math.min(tempCanvas.width - 1, bounds.right + padding);
-  const cropBottom = Math.min(tempCanvas.height - 1, bounds.bottom + padding);
+  const cropRight = Math.min(sourceCanvas.width - 1, bounds.right + padding);
+  const cropBottom = Math.min(sourceCanvas.height - 1, bounds.bottom + padding);
   
   const contentWidth = cropRight - cropLeft + 1;
   const contentHeight = cropBottom - cropTop + 1;
 
-  // Calculate target size to fit within fill ratio
+  // Calculate target content size
   const maxContentWidth = TARGET_WIDTH * DESIGN_FILL_RATIO;
   const maxContentHeight = TARGET_HEIGHT * DESIGN_FILL_RATIO;
   
@@ -117,17 +236,17 @@ export async function resizeToTarget(imageBlob: Blob): Promise<Blob> {
     finalContentWidth = maxContentHeight * contentRatio;
   }
 
-  // Two-step upscale for better quality
-  const scaledCanvas = twoStepUpscale(
-    tempCanvas,
+  // Use high-quality upscaling
+  const scaledCanvas = lanczosUpscale(
+    sourceCanvas,
     cropLeft, cropTop, contentWidth, contentHeight,
     Math.round(finalContentWidth), Math.round(finalContentHeight)
   );
   
-  // Clean up edge transparency
+  // Clean edges
   cleanEdges(scaledCanvas);
 
-  // Create final canvas and center the content
+  // Center on final canvas
   const finalCanvas = document.createElement('canvas');
   finalCanvas.width = TARGET_WIDTH;
   finalCanvas.height = TARGET_HEIGHT;

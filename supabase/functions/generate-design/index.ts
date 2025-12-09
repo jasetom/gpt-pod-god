@@ -174,32 +174,85 @@ ${sanitizedPrompt}`,
       throw new Error('No image generated');
     }
 
-    console.log('Fetching generated image...');
+    console.log('Step 2: AI Upscaling with Real-ESRGAN...');
 
-    // Fetch the image and convert to base64
-    const imageResponse = await fetch(initialImageUrl);
-    if (!imageResponse.ok) {
-      throw new Error('Failed to fetch image');
-    }
+    // Upscale using Real-ESRGAN for higher quality
+    let upscaledImageUrl = initialImageUrl;
     
-    const imageBuffer = await imageResponse.arrayBuffer();
-    const uint8Array = new Uint8Array(imageBuffer);
-    let binary = '';
-    const chunkSize = 32768;
-    for (let i = 0; i < uint8Array.length; i += chunkSize) {
-      const chunk = uint8Array.slice(i, i + chunkSize);
-      binary += String.fromCharCode.apply(null, Array.from(chunk));
-    }
-    const base64 = btoa(binary);
-    const dataUrl = `data:image/png;base64,${base64}`;
+    try {
+      const upscaleResponse = await fetch('https://fal.run/fal-ai/real-esrgan', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Key ${FAL_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          image_url: initialImageUrl,
+          scale: 4, // 4x upscale: 1024 -> 4096
+          face_enhance: false,
+          model: 'RealESRGAN_x4plus' // Best quality general model
+        }),
+      });
 
-    console.log('Generation complete!');
+      if (upscaleResponse.ok) {
+        const upscaleResult = await upscaleResponse.json();
+        console.log('Upscale result:', JSON.stringify(upscaleResult));
+        upscaledImageUrl = upscaleResult.image?.url || initialImageUrl;
+        console.log('AI upscaling complete');
+      } else {
+        const errorText = await upscaleResponse.text();
+        console.error('Upscale error:', upscaleResponse.status, errorText);
+        console.log('Falling back to original resolution');
+      }
+    } catch (upscaleError) {
+      console.error('Upscale exception:', upscaleError);
+      console.log('Falling back to original resolution');
+    }
+
+    console.log('Step 3: Fetching images...');
+
+    // Fetch both original (for alpha) and upscaled (for RGB)
+    const [originalResponse, upscaledResponse] = await Promise.all([
+      fetch(initialImageUrl),
+      fetch(upscaledImageUrl)
+    ]);
+
+    if (!originalResponse.ok || !upscaledResponse.ok) {
+      throw new Error('Failed to fetch images');
+    }
+
+    const originalBuffer = await originalResponse.arrayBuffer();
+    const upscaledBuffer = await upscaledResponse.arrayBuffer();
+    
+    // Convert to base64
+    const chunkSize = 32768;
+    
+    const originalUint8 = new Uint8Array(originalBuffer);
+    let originalBinary = '';
+    for (let i = 0; i < originalUint8.length; i += chunkSize) {
+      const chunk = originalUint8.slice(i, i + chunkSize);
+      originalBinary += String.fromCharCode.apply(null, Array.from(chunk));
+    }
+    const originalBase64 = btoa(originalBinary);
+    const originalDataUrl = `data:image/png;base64,${originalBase64}`;
+
+    const upscaledUint8 = new Uint8Array(upscaledBuffer);
+    let upscaledBinary = '';
+    for (let i = 0; i < upscaledUint8.length; i += chunkSize) {
+      const chunk = upscaledUint8.slice(i, i + chunkSize);
+      upscaledBinary += String.fromCharCode.apply(null, Array.from(chunk));
+    }
+    const upscaledBase64 = btoa(upscaledBinary);
+    const upscaledDataUrl = `data:image/png;base64,${upscaledBase64}`;
+
+    console.log('All steps complete!');
 
     return new Response(
       JSON.stringify({ 
         success: true,
-        imageUrl: dataUrl,
-        message: 'Design generated successfully'
+        imageUrl: upscaledDataUrl,
+        originalImageUrl: originalDataUrl, // For alpha channel extraction
+        message: 'Design generated and upscaled successfully'
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
