@@ -65,64 +65,71 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         prompt: `Create a professional print-on-demand t-shirt illustration.
+
 The final output MUST be a fully isolated design on a 100% transparent background.
 
-ALL ENCLOSED SHAPES MUST BE FILLED WITH SOLID, FULLY OPAQUE COLORS.
-Do NOT leave any interior area empty or transparent unless explicitly intended.
+ALL ENCLOSED SHAPES MUST BE FILLED WITH A SINGLE FLAT, UNIFORM, FULLY OPAQUE COLOR.
+Do NOT leave any interior areas empty or transparent unless explicitly intended.
+Do NOT add ANY tonal variation inside shapes.
 
 CRITICAL GLOBAL RULES:
 
 * Use solid, fully opaque colors only. No pixel may contain partial opacity.
-* Absolutely no gradients, soft blends, color ramps, or tonal shifts.
+* No gradients, no soft blends, no tonal ramps, no shading, no lighting effects.
+* All interior fills must be 100% flat and uniform with ZERO variation.
+* Do not simulate curvature, volume, depth, highlights, or shadows of any kind.
 * Every shape must have a thick, consistent black outline with uniform stroke width.
-* All edges must be hard-edged vector-style, never soft or feathered.
-* No lighting, shading, highlights, reflections, inner shadows, outer glows, or ambient occlusion.
-* No noise, texture, patterns, grain, dithering, or semi-realistic rendering.
+* All edges must be hard-edged vector-style. Absolutely no soft or feathered edges.
+* No noise, texture, grain, dithering, or semi-realistic rendering.
 
 ANTI-FAILSAFE OVERRIDES:
 
-* Background must be pure transparency only. No background colors or halos.
-* Do NOT leave interiors unfilled. All closed outlines must contain fully opaque color fills.
-* Do NOT place color behind text or inside negative spaces of letters.
-* Do NOT fade edges into transparency. Edges must remain crisp and solid.
-* Do NOT add soft antialiasing. Keep all edges pixel-crisp.
-* Do NOT simulate shadows with darker tones unless they are fully flat colors with outlines.
-* Do NOT create subtle tints or variations inside any single color area.
+* Background must be pure transparency only — no color, halo, or haze.
+* Do NOT fade edges into transparency. All edges must be solid and crisp.
+* Do NOT add soft antialiasing.
+* Do NOT simulate shadows using darker tones unless they are strictly flat shapes with black outlines.
+* Do NOT alter brightness or color inside shapes.
+* Do NOT create subtle variations, gradients, or lighting on text or characters.
+* Do NOT add dimensional effects around text (no inner glow, outer glow, or shadow).
+
+STRICT 2D RULE:
+Render the entire design in a pure 2D flat vector style with no depth, no perspective shading, and no three-dimensional cues.
 
 STYLE TARGET:
 
 * Flat vector illustration (screen-printing aesthetic)
 * Bold, high-contrast palette optimized for dark t-shirts
-* Clean cartoon / graphic-illustration clarity
-* Centered composition with no cut-off elements
-* If text is included, it must have:
+* Clean cartoon graphic clarity
+* Centered composition with all elements fully inside the frame
+* If text is included, it must follow:
 
-  * solid opaque fills
-  * bold black outlines
-  * clear negative space
-  * centered alignment
+  * solid opaque fill
+  * bold black outline
+  * crisp negative space
+  * zero inner/outer shadows
+  * zero dimensional or lighting effects
 
-ABSOLUTELY DO NOT INCLUDE:
+ABSOLUTE DO-NOT-INCLUDE LIST:
 
-* Backgrounds of any kind
-* Patterns, shapes, gradients, halos
-* Shading or soft lighting
-* Transparency effects
-* Photorealism
-* Complex lighting
-* Subtle color variations
-* Pastel tones or low-opacity fills
-* Floating artifacts
-* Fuzzy, broken, or incomplete outlines
+* No backgrounds of any kind
+* No gradients
+* No soft light or glow
+* No shadowing or dimensionality
+* No transparency effects
+* No photorealism
+* No pastel tones or low-opacity fills
+* No floating artifacts
+* No fuzzy or incomplete outlines
+* No tonal transitions inside shapes
 
 OUTPUT GOAL:
 Produce a print-ready transparent PNG with:
 
-* Fully opaque, solid color fills
-* Hard-edged outlines
+* Fully opaque, flat solid color fills
+* Hard-edged thick outlines
 * Zero artifacts
 * Clean silhouette
-* Strong visibility on dark POD garments
+* Strong visibility on dark POD garments (unless specified otherwise in design request)
 
 DESIGN REQUEST: ${sanitizedPrompt}`,
         image_size: '1024x1024',
