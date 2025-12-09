@@ -38,7 +38,9 @@ export function useDesignGenerator() {
   const [step, setStep] = useState<GenerationStep>('idle');
   const [currentStepIndex, setCurrentStepIndex] = useState(-1);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [rawPreviewUrl, setRawPreviewUrl] = useState<string | null>(null);
   const [finalBlob, setFinalBlob] = useState<Blob | null>(null);
+  const [rawBlob, setRawBlob] = useState<Blob | null>(null);
   const [prompt, setPrompt] = useState('');
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState('');
@@ -47,7 +49,9 @@ export function useDesignGenerator() {
     setStep('idle');
     setCurrentStepIndex(-1);
     setPreviewUrl(null);
+    setRawPreviewUrl(null);
     setFinalBlob(null);
+    setRawBlob(null);
     setPrompt('');
     setProgress(0);
     setProgressMessage('');
@@ -58,7 +62,9 @@ export function useDesignGenerator() {
     setStep('idle');
     setCurrentStepIndex(-1);
     setPreviewUrl(null);
+    setRawPreviewUrl(null);
     setFinalBlob(null);
+    setRawBlob(null);
     setProgress(0);
     setProgressMessage('');
     
@@ -141,19 +147,23 @@ export function useDesignGenerator() {
       for (let i = 0; i < binaryData.length; i++) {
         bytes[i] = binaryData.charCodeAt(i);
       }
-      let imageBlob = new Blob([bytes], { type: 'image/png' });
+      const rawImageBlob = new Blob([bytes], { type: 'image/png' });
+      
+      // Store raw image for debugging
+      setRawPreviewUrl(URL.createObjectURL(rawImageBlob));
+      setRawBlob(rawImageBlob);
 
       setProgress(82);
       setProgressMessage('Preparing high-resolution output...');
 
       // Resize to target dimensions
-      imageBlob = await resizeToTarget(imageBlob);
+      const processedBlob = await resizeToTarget(rawImageBlob);
       
       setProgress(95);
       setProgressMessage('Almost done...');
       
-      setPreviewUrl(URL.createObjectURL(imageBlob));
-      setFinalBlob(imageBlob);
+      setPreviewUrl(URL.createObjectURL(processedBlob));
+      setFinalBlob(processedBlob);
 
       // Complete
       setStep('complete');
@@ -181,6 +191,15 @@ export function useDesignGenerator() {
     }
   }, [finalBlob]);
 
+  const downloadRaw = useCallback(() => {
+    if (rawBlob) {
+      const timestamp = Date.now();
+      const filename = `pod-design-raw-${timestamp}.png`;
+      downloadImage(rawBlob, filename);
+      toast.success('Raw image download started!');
+    }
+  }, [rawBlob]);
+
   const getStepDescription = useCallback(() => {
     if (currentStepIndex >= 0 && currentStepIndex < STEPS.length) {
       return STEPS[currentStepIndex].description;
@@ -192,12 +211,15 @@ export function useDesignGenerator() {
     step,
     currentStepIndex,
     previewUrl,
+    rawPreviewUrl,
     finalBlob,
+    rawBlob,
     prompt,
     progress,
     progressMessage,
     generate,
     download,
+    downloadRaw,
     reset,
     getStepDescription,
     isProcessing: step !== 'idle' && step !== 'complete' && step !== 'error',
