@@ -1,47 +1,6 @@
-import { supabase } from "@/integrations/supabase/client";
-
 const TARGET_WIDTH = 4500;
 const TARGET_HEIGHT = 5400;
 const DESIGN_FILL_RATIO = 0.85;
-
-/**
- * Remove background using removebgapi.com via edge function
- */
-export async function removeBackground(
-  imageBlob: Blob,
-  onProgress?: (progress: number) => void
-): Promise<Blob> {
-  console.log('Starting professional background removal...');
-  onProgress?.(10);
-
-  // Convert blob to base64
-  const base64 = await blobToBase64(imageBlob);
-  onProgress?.(20);
-
-  // Call edge function
-  const { data, error } = await supabase.functions.invoke('remove-background', {
-    body: { imageBase64: base64 }
-  });
-
-  if (error) {
-    console.error('Background removal error:', error);
-    throw new Error('Background removal failed: ' + error.message);
-  }
-
-  if (!data?.imageBase64) {
-    throw new Error('No image returned from background removal');
-  }
-
-  onProgress?.(90);
-
-  // Convert base64 back to blob
-  const resultBlob = await base64ToBlob(data.imageBase64);
-  
-  onProgress?.(100);
-  console.log('Background removal complete');
-  
-  return resultBlob;
-}
 
 /**
  * High-quality upscale with sharpening
@@ -231,20 +190,6 @@ function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
       1.0
     );
   });
-}
-
-function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-}
-
-async function base64ToBlob(base64: string): Promise<Blob> {
-  const response = await fetch(base64);
-  return response.blob();
 }
 
 export function downloadImage(blob: Blob, filename: string): void {

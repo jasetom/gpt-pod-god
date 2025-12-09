@@ -1,3 +1,4 @@
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
@@ -21,60 +22,51 @@ serve(async (req) => {
       );
     }
 
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY is not configured');
+    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
+    if (!OPENAI_API_KEY) {
+      throw new Error('OPENAI_API_KEY is not configured');
     }
 
-    console.log('Generating POD design for prompt:', prompt);
+    console.log('Generating POD design with OpenAI for prompt:', prompt);
 
-    // Use the Gemini image generation model with optimized POD prompting
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    // Use OpenAI's gpt-image-1 with transparent background
+    const response = await fetch('https://api.openai.com/v1/images/generations', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash-image-preview',
-        messages: [
-          {
-            role: 'user',
-            content: `You are a professional print-on-demand t-shirt designer. Create a HIGH QUALITY vector-style illustration.
+        model: 'gpt-image-1',
+        prompt: `Create a professional print-on-demand t-shirt design illustration.
 
-CRITICAL REQUIREMENTS:
-1. PURE WHITE BACKGROUND (#FFFFFF) - completely solid white, no gradients, no shadows, no texture
-2. HIGH RESOLUTION with crisp, clean edges - this will be printed on merchandise
-3. Vector/flat illustration style with bold, saturated colors
-4. All elements must have HARD, CLEAN EDGES - no blur, no soft shadows, no anti-aliasing artifacts
-5. Design should be SELF-CONTAINED with clear boundaries
-6. Any text must be BOLD with clear outlines and excellent legibility
-
-STYLE GUIDELINES:
-- Modern flat design aesthetic
-- Bold outlines (2-3px black or dark colored strokes around elements)
-- Vibrant, print-friendly colors (avoid pale pastels)
+STYLE REQUIREMENTS:
+- Vector/flat illustration style with bold, saturated colors
+- Clean, crisp edges suitable for printing on merchandise
+- Modern flat design aesthetic with bold outlines
 - Cartoon/illustration style that translates well to print
-- Centered composition in 4:5 aspect ratio
+- Centered composition
 
 DO NOT include:
-- Gradients or soft shadows that will cause edge fringing
-- Very light colors that blend with white background
+- Any background elements - the subject should be isolated
+- Very light colors or pastels
 - Complex textures or photorealistic elements
-- Elements that touch the edges
+- Text unless specifically requested
 
 DESIGN REQUEST: ${prompt}
 
-Create a professional, print-ready illustration with PURE WHITE background and CRISP EDGES.`
-          }
-        ],
-        modalities: ['image', 'text']
+Create a professional, print-ready isolated illustration with no background.`,
+        n: 1,
+        size: '1024x1024',
+        background: 'transparent',
+        output_format: 'png',
+        quality: 'high'
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('AI gateway error:', response.status, errorText);
+      console.error('OpenAI API error:', response.status, errorText);
       
       if (response.status === 429) {
         return new Response(
@@ -83,31 +75,35 @@ Create a professional, print-ready illustration with PURE WHITE background and C
         );
       }
       
-      if (response.status === 402) {
+      if (response.status === 402 || response.status === 401) {
         return new Response(
-          JSON.stringify({ error: 'AI usage limit reached. Please add credits to continue.' }),
+          JSON.stringify({ error: 'OpenAI API authentication failed. Please check your API key.' }),
           { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
       
-      throw new Error(`AI gateway error: ${response.status}`);
+      throw new Error(`OpenAI API error: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
-    console.log('AI response received');
+    console.log('OpenAI response received');
 
-    // Extract the image from the response
-    const imageData = data.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+    // Extract the base64 image from the response
+    const imageBase64 = data.data?.[0]?.b64_json;
     
-    if (!imageData) {
+    if (!imageBase64) {
+      console.error('No image in response:', JSON.stringify(data));
       throw new Error('No image generated');
     }
+
+    // Return as data URL for consistency with frontend
+    const imageUrl = `data:image/png;base64,${imageBase64}`;
 
     return new Response(
       JSON.stringify({ 
         success: true,
-        imageUrl: imageData,
-        message: data.choices?.[0]?.message?.content || 'Design generated successfully'
+        imageUrl: imageUrl,
+        message: 'Design generated successfully with transparent background'
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
