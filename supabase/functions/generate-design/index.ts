@@ -84,10 +84,10 @@ Create a professional, print-ready isolated illustration.`,
       throw new Error('No image generated');
     }
 
-    console.log('Step 2: Upscaling with ESRGAN (preserves transparency)...');
+    console.log('Step 2: Refining edges with BiRefNet...');
 
-    // Step 2: Use ESRGAN for upscaling - it preserves alpha channel unlike diffusion upscalers
-    const esrganResponse = await fetch('https://fal.run/fal-ai/esrgan', {
+    // Step 2: Use BiRefNet for high-quality edge refinement and background removal
+    const birefnetResponse = await fetch('https://fal.run/fal-ai/birefnet', {
       method: 'POST',
       headers: {
         'Authorization': `Key ${FAL_KEY}`,
@@ -95,28 +95,49 @@ Create a professional, print-ready isolated illustration.`,
       },
       body: JSON.stringify({
         image_url: initialImageUrl,
-        scale: 4, // 4x upscale: 1024 -> 4096
+        model: 'General',
+        output_format: 'png'
+      }),
+    });
+
+    let refinedImageUrl = initialImageUrl;
+    if (birefnetResponse.ok) {
+      const birefnetResult = await birefnetResponse.json();
+      refinedImageUrl = birefnetResult.image?.url || initialImageUrl;
+      console.log('Edge refinement complete');
+    } else {
+      console.error('BiRefNet error, using original image');
+    }
+
+    console.log('Step 3: Upscaling with ESRGAN...');
+
+    // Step 3: Upscale the refined image with ESRGAN
+    const esrganResponse = await fetch('https://fal.run/fal-ai/esrgan', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Key ${FAL_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        image_url: refinedImageUrl,
+        scale: 4,
         face_enhance: false
       }),
     });
 
-    if (!esrganResponse.ok) {
-      const errorText = await esrganResponse.text();
-      console.error('ESRGAN error:', esrganResponse.status, errorText);
-      // Fall back to original if ESRGAN fails
-    }
-
-    let upscaledImageUrl = initialImageUrl;
+    let upscaledImageUrl = refinedImageUrl;
     if (esrganResponse.ok) {
       const esrganResult = await esrganResponse.json();
-      upscaledImageUrl = esrganResult.image?.url || initialImageUrl;
+      upscaledImageUrl = esrganResult.image?.url || refinedImageUrl;
       console.log('ESRGAN upscaling complete');
+    } else {
+      console.error('ESRGAN error, using refined image');
     }
 
-    console.log('Step 3: Refining edges with BiRefNet...');
+    console.log('Step 4: Final edge cleanup with BiRefNet...');
 
-    // Step 3: Use BiRefNet for high-quality edge refinement on the upscaled image
-    const birefnetResponse = await fetch('https://fal.run/fal-ai/birefnet', {
+    // Step 4: Run BiRefNet again on upscaled image to restore clean transparency
+    const finalBirefnetResponse = await fetch('https://fal.run/fal-ai/birefnet', {
       method: 'POST',
       headers: {
         'Authorization': `Key ${FAL_KEY}`,
@@ -129,16 +150,13 @@ Create a professional, print-ready isolated illustration.`,
       }),
     });
 
-    if (!birefnetResponse.ok) {
-      console.error('BiRefNet error, using upscaled image');
-      // Fall back to upscaled image if BiRefNet fails
-    }
-
     let finalImageUrl = upscaledImageUrl;
-    if (birefnetResponse.ok) {
-      const birefnetResult = await birefnetResponse.json();
-      finalImageUrl = birefnetResult.image?.url || upscaledImageUrl;
-      console.log('Edge refinement complete');
+    if (finalBirefnetResponse.ok) {
+      const finalBirefnetResult = await finalBirefnetResponse.json();
+      finalImageUrl = finalBirefnetResult.image?.url || upscaledImageUrl;
+      console.log('Final transparency cleanup complete');
+    } else {
+      console.error('Final BiRefNet error, using upscaled image');
     }
 
     console.log('Step 4: Fetching final image...');

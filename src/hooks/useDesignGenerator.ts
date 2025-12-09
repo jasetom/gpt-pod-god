@@ -20,15 +20,17 @@ export type StepInfo = {
 
 export const STEPS: StepInfo[] = [
   { id: 'generating', label: 'Generating', description: 'AI creates your design' },
-  { id: 'upscaling', label: 'Upscaling', description: 'ESRGAN 4x super-resolution' },
   { id: 'refining', label: 'Refining', description: 'BiRefNet edge cleanup' },
+  { id: 'upscaling', label: 'Upscaling', description: 'ESRGAN 4x super-resolution' },
+  { id: 'finalRefine', label: 'Transparency', description: 'Restoring clean edges' },
   { id: 'complete', label: 'Complete', description: 'Ready to download' },
 ];
 
 const STEP_PROGRESS: Record<string, { start: number; end: number }> = {
-  generating: { start: 0, end: 40 },
-  upscaling: { start: 40, end: 70 },
-  refining: { start: 70, end: 90 },
+  generating: { start: 0, end: 30 },
+  refining: { start: 30, end: 50 },
+  upscaling: { start: 50, end: 75 },
+  finalRefine: { start: 75, end: 90 },
   finalizing: { start: 90, end: 100 },
 };
 
@@ -73,7 +75,7 @@ export function useDesignGenerator() {
 
       // Simulate progress through stages
       let currentProgress = 0;
-      const stages = ['generating', 'refining', 'upscaling'];
+      const stages = ['generating', 'refining', 'upscaling', 'finalRefine'];
       let stageIndex = 0;
       
       const stageMessages: Record<string, string[]> = {
@@ -82,50 +84,62 @@ export function useDesignGenerator() {
           'Composing visual elements...',
           'Rendering with transparent background...',
         ],
+        refining: [
+          'BiRefNet edge analysis...',
+          'Cleaning initial transparency...',
+          'Perfecting edge boundaries...',
+        ],
         upscaling: [
           'ESRGAN 4x super-resolution...',
           'Enhancing pixel details...',
-          'Preserving transparency...',
+          'Scaling to print resolution...',
         ],
-        refining: [
-          'BiRefNet edge analysis...',
-          'Cleaning transparency boundaries...',
-          'Perfecting edge quality...',
+        finalRefine: [
+          'Final BiRefNet pass...',
+          'Restoring clean transparency...',
+          'Finalizing edge quality...',
         ],
       };
 
       progressInterval = setInterval(() => {
         const currentStage = stages[stageIndex];
-        const { start, end } = STEP_PROGRESS[currentStage];
+        const stageInfo = STEP_PROGRESS[currentStage];
+        if (!stageInfo) return;
+        
+        const { start, end } = stageInfo;
         
         // Smoothly progress within each stage
-        if (currentProgress < end - 5) {
-          const increment = Math.random() * 2 + 0.5;
-          currentProgress = Math.min(currentProgress + increment, end - 5);
+        if (currentProgress < end - 3) {
+          const increment = Math.random() * 1.5 + 0.3;
+          currentProgress = Math.min(currentProgress + increment, end - 3);
           setProgress(Math.round(currentProgress));
           
           // Update message based on progress within stage
           const stageProgress = (currentProgress - start) / (end - start);
+          const messages = stageMessages[currentStage] || ['Processing...'];
           const msgIndex = Math.min(
-            Math.floor(stageProgress * stageMessages[currentStage].length),
-            stageMessages[currentStage].length - 1
+            Math.floor(stageProgress * messages.length),
+            messages.length - 1
           );
-          setProgressMessage(stageMessages[currentStage][msgIndex]);
+          setProgressMessage(messages[msgIndex]);
           
           // Move to next stage
-          if (currentProgress >= end - 10 && stageIndex < stages.length - 1) {
+          if (currentProgress >= end - 5 && stageIndex < stages.length - 1) {
             stageIndex++;
             const nextStage = stages[stageIndex];
-            if (nextStage === 'upscaling') {
-              setStep('upscaling');
-              setCurrentStepIndex(1);
-            } else if (nextStage === 'refining') {
+            if (nextStage === 'refining') {
               setStep('refining');
+              setCurrentStepIndex(1);
+            } else if (nextStage === 'upscaling') {
+              setStep('upscaling');
               setCurrentStepIndex(2);
+            } else if (nextStage === 'finalRefine') {
+              setStep('refining');
+              setCurrentStepIndex(3);
             }
           }
         }
-      }, 400);
+      }, 350);
 
       // Call the edge function (does all the heavy lifting)
       console.log('Calling generate-design edge function...');
@@ -163,7 +177,7 @@ export function useDesignGenerator() {
 
       // Complete
       setStep('complete');
-      setCurrentStepIndex(3);
+      setCurrentStepIndex(4);
       setProgress(100);
       setProgressMessage('Complete!');
       toast.success('Your high-quality design is ready!');
