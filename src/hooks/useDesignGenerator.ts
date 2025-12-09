@@ -1,12 +1,14 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { upscaleImage, downloadImage } from '@/lib/imageProcessor';
+import { downloadImage, resizeToTarget } from '@/lib/imageProcessor';
 import { toast } from 'sonner';
 
 export type GenerationStep = 
   | 'idle'
   | 'generating'
+  | 'refining'
   | 'upscaling'
+  | 'finalizing'
   | 'complete'
   | 'error';
 
@@ -18,9 +20,17 @@ export type StepInfo = {
 
 export const STEPS: StepInfo[] = [
   { id: 'generating', label: 'Generating', description: 'AI creates your design' },
-  { id: 'upscaling', label: 'Processing', description: 'Upscaling & edge cleanup' },
+  { id: 'refining', label: 'Refining', description: 'Cleaning edges with AI' },
+  { id: 'upscaling', label: 'Upscaling', description: 'AI super-resolution 4x' },
   { id: 'complete', label: 'Complete', description: 'Ready to download' },
 ];
+
+const STEP_PROGRESS: Record<string, { start: number; end: number }> = {
+  generating: { start: 0, end: 35 },
+  refining: { start: 35, end: 55 },
+  upscaling: { start: 55, end: 90 },
+  finalizing: { start: 90, end: 100 },
+};
 
 export function useDesignGenerator() {
   const [step, setStep] = useState<GenerationStep>('idle');
@@ -50,8 +60,9 @@ export function useDesignGenerator() {
     setProgress(0);
     setProgressMessage('');
     
-    // Small delay to ensure state is cleared
     await new Promise(resolve => setTimeout(resolve, 50));
+    
+    let progressInterval: NodeJS.Timeout | null = null;
     
     try {
       setPrompt(inputPrompt);
@@ -60,30 +71,77 @@ export function useDesignGenerator() {
       setProgress(0);
       setProgressMessage('Starting AI generation...');
 
-      // Simulate generation progress (since we can't get real progress from the API)
-      const progressInterval = setInterval(() => {
-        setProgress(prev => {
-          if (prev < 45) return prev + Math.random() * 3;
-          return prev;
-        });
-      }, 500);
-
-      // Step 1: Generate the image with transparent background using Fal.ai + gpt-image-1
-      console.log('Step 1: Generating image with Fal.ai + gpt-image-1 (transparent background)...');
-      setProgressMessage('Creating your design with AI...');
+      // Simulate progress through stages
+      let currentProgress = 0;
+      const stages = ['generating', 'refining', 'upscaling'];
+      let stageIndex = 0;
       
+      const stageMessages: Record<string, string[]> = {
+        generating: [
+          'Creating your design with AI...',
+          'Composing visual elements...',
+          'Applying style and colors...',
+        ],
+        refining: [
+          'Analyzing edges with BiRefNet AI...',
+          'Cleaning transparency boundaries...',
+          'Perfecting edge quality...',
+        ],
+        upscaling: [
+          'AI super-resolution in progress...',
+          'Enhancing details with Clarity AI...',
+          'Sharpening and finalizing...',
+        ],
+      };
+
+      progressInterval = setInterval(() => {
+        const currentStage = stages[stageIndex];
+        const { start, end } = STEP_PROGRESS[currentStage];
+        
+        // Smoothly progress within each stage
+        if (currentProgress < end - 5) {
+          const increment = Math.random() * 2 + 0.5;
+          currentProgress = Math.min(currentProgress + increment, end - 5);
+          setProgress(Math.round(currentProgress));
+          
+          // Update message based on progress within stage
+          const stageProgress = (currentProgress - start) / (end - start);
+          const msgIndex = Math.min(
+            Math.floor(stageProgress * stageMessages[currentStage].length),
+            stageMessages[currentStage].length - 1
+          );
+          setProgressMessage(stageMessages[currentStage][msgIndex]);
+          
+          // Move to next stage
+          if (currentProgress >= end - 10 && stageIndex < stages.length - 1) {
+            stageIndex++;
+            const nextStage = stages[stageIndex];
+            if (nextStage === 'refining') {
+              setStep('refining');
+              setCurrentStepIndex(1);
+            } else if (nextStage === 'upscaling') {
+              setStep('upscaling');
+              setCurrentStepIndex(2);
+            }
+          }
+        }
+      }, 400);
+
+      // Call the edge function (does all the heavy lifting)
+      console.log('Calling generate-design edge function...');
       const { data, error } = await supabase.functions.invoke('generate-design', {
         body: { prompt: inputPrompt }
       });
 
-      clearInterval(progressInterval);
+      if (progressInterval) clearInterval(progressInterval);
 
       if (error) throw new Error(error.message);
       if (data.error) throw new Error(data.error);
       if (!data.imageUrl) throw new Error('No image received');
 
-      setProgress(50);
-      setProgressMessage('Design generated! Processing...');
+      setProgress(90);
+      setProgressMessage('Processing final image...');
+      setStep('finalizing');
 
       // Convert base64 to blob
       const base64Data = data.imageUrl.split(',')[1];
@@ -94,34 +152,24 @@ export function useDesignGenerator() {
       }
       let imageBlob = new Blob([bytes], { type: 'image/png' });
 
-      // Show initial preview (already has transparent background)
-      setPreviewUrl(URL.createObjectURL(imageBlob));
-      toast.success('Design generated with transparent background!');
+      setProgress(95);
+      setProgressMessage('Fitting to 4500×5400 canvas...');
 
-      // Step 2: Upscale with progress tracking
-      setStep('upscaling');
-      setCurrentStepIndex(1);
-      console.log('Step 2: Upscaling to 4500x5400...');
-      
-      imageBlob = await upscaleImage(imageBlob, (upscaleProgress, message) => {
-        // Map upscale progress (0-100) to overall progress (50-100)
-        const overallProgress = 50 + (upscaleProgress * 0.5);
-        setProgress(Math.round(overallProgress));
-        setProgressMessage(message);
-      });
+      // Resize to target dimensions
+      imageBlob = await resizeToTarget(imageBlob);
       
       setPreviewUrl(URL.createObjectURL(imageBlob));
       setFinalBlob(imageBlob);
-      toast.success('Image upscaled to 4500×5400!');
 
       // Complete
       setStep('complete');
-      setCurrentStepIndex(2);
+      setCurrentStepIndex(3);
       setProgress(100);
       setProgressMessage('Complete!');
-      toast.success('Your design is ready to download!');
+      toast.success('Your high-quality design is ready!');
 
     } catch (error) {
+      if (progressInterval) clearInterval(progressInterval);
       console.error('Generation error:', error);
       setStep('error');
       setProgress(0);

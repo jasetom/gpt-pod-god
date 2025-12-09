@@ -2,20 +2,13 @@ const TARGET_WIDTH = 4500;
 const TARGET_HEIGHT = 5400;
 const DESIGN_FILL_RATIO = 0.85;
 
-export type ProgressCallback = (progress: number, message: string) => void;
-
 /**
- * High-quality upscale with edge cleanup and sharpening
+ * Resize AI-upscaled image to target dimensions, centering on canvas
  */
-export async function upscaleImage(
-  imageBlob: Blob, 
-  onProgress?: ProgressCallback
-): Promise<Blob> {
-  console.log('Starting high-quality upscale to', TARGET_WIDTH, 'x', TARGET_HEIGHT);
-  onProgress?.(5, 'Loading image...');
+export async function resizeToTarget(imageBlob: Blob): Promise<Blob> {
+  console.log('Fitting to target canvas:', TARGET_WIDTH, 'x', TARGET_HEIGHT);
 
   const img = await loadImage(imageBlob);
-  onProgress?.(10, 'Analyzing content...');
   
   // Find content bounds
   const tempCanvas = document.createElement('canvas');
@@ -27,10 +20,8 @@ export async function upscaleImage(
   const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
   const bounds = findContentBounds(imageData);
 
-  onProgress?.(15, 'Cropping to content...');
-
-  // Crop to content
-  const padding = 10;
+  // Crop to content with padding
+  const padding = Math.round(Math.max(img.naturalWidth, img.naturalHeight) * 0.01);
   const cropLeft = Math.max(0, bounds.left - padding);
   const cropTop = Math.max(0, bounds.top - padding);
   const cropRight = Math.min(tempCanvas.width - 1, bounds.right + padding);
@@ -49,12 +40,7 @@ export async function upscaleImage(
     0, 0, contentWidth, contentHeight
   );
 
-  onProgress?.(20, 'Cleaning up edges...');
-  
-  // Clean up frizzy edges BEFORE upscaling
-  cleanAlphaEdges(croppedCanvas, 2);
-
-  // Calculate target size
+  // Calculate target size to fit within fill ratio
   const maxContentWidth = TARGET_WIDTH * DESIGN_FILL_RATIO;
   const maxContentHeight = TARGET_HEIGHT * DESIGN_FILL_RATIO;
   
@@ -72,203 +58,28 @@ export async function upscaleImage(
     finalContentWidth = maxContentHeight * contentRatio;
   }
 
-  onProgress?.(30, 'Upscaling image...');
+  // Scale the cropped content
+  const scaledCanvas = document.createElement('canvas');
+  scaledCanvas.width = Math.round(finalContentWidth);
+  scaledCanvas.height = Math.round(finalContentHeight);
+  const scaledCtx = scaledCanvas.getContext('2d')!;
+  scaledCtx.imageSmoothingEnabled = true;
+  scaledCtx.imageSmoothingQuality = 'high';
+  scaledCtx.drawImage(croppedCanvas, 0, 0, scaledCanvas.width, scaledCanvas.height);
 
-  // Multi-step upscaling for quality (smaller increments for better quality)
-  let currentCanvas = croppedCanvas;
-  let currentWidth = contentWidth;
-  let currentHeight = contentHeight;
-
-  const maxStepScale = 1.3; // Smaller steps = better quality
-  let stepCount = 0;
-  const totalSteps = Math.ceil(Math.log(finalContentWidth / currentWidth) / Math.log(maxStepScale));
-  
-  while (currentWidth < finalContentWidth * 0.98 || currentHeight < finalContentHeight * 0.98) {
-    const scaleX = finalContentWidth / currentWidth;
-    const scaleY = finalContentHeight / currentHeight;
-    const step = Math.min(maxStepScale, Math.max(scaleX, scaleY));
-    
-    const targetW = Math.min(Math.round(finalContentWidth), Math.round(currentWidth * step));
-    const targetH = Math.min(Math.round(finalContentHeight), Math.round(currentHeight * step));
-
-    const nextCanvas = document.createElement('canvas');
-    nextCanvas.width = targetW;
-    nextCanvas.height = targetH;
-    const nextCtx = nextCanvas.getContext('2d')!;
-    
-    nextCtx.imageSmoothingEnabled = true;
-    nextCtx.imageSmoothingQuality = 'high';
-    nextCtx.drawImage(currentCanvas, 0, 0, targetW, targetH);
-
-    currentCanvas = nextCanvas;
-    currentWidth = targetW;
-    currentHeight = targetH;
-    
-    stepCount++;
-    const upscaleProgress = 30 + (stepCount / totalSteps) * 40;
-    onProgress?.(Math.min(70, upscaleProgress), `Upscaling step ${stepCount}...`);
-  }
-
-  onProgress?.(75, 'Enhancing sharpness...');
-
-  // Apply enhanced sharpening with multiple passes
-  currentCanvas = sharpenCanvas(currentCanvas, 0.3);
-  onProgress?.(80, 'Applying second sharpening pass...');
-  currentCanvas = sharpenCanvas(currentCanvas, 0.15);
-
-  onProgress?.(85, 'Final edge cleanup...');
-  
-  // Final edge cleanup after upscaling
-  cleanAlphaEdges(currentCanvas, 1);
-
-  onProgress?.(90, 'Compositing final image...');
-
-  // Final canvas centered
+  // Create final canvas and center the content
   const finalCanvas = document.createElement('canvas');
   finalCanvas.width = TARGET_WIDTH;
   finalCanvas.height = TARGET_HEIGHT;
   const finalCtx = finalCanvas.getContext('2d')!;
-
-  finalCtx.imageSmoothingEnabled = true;
-  finalCtx.imageSmoothingQuality = 'high';
   finalCtx.clearRect(0, 0, TARGET_WIDTH, TARGET_HEIGHT);
 
-  const offsetX = Math.round((TARGET_WIDTH - currentWidth) / 2);
-  const offsetY = Math.round((TARGET_HEIGHT - currentHeight) / 2);
+  const offsetX = Math.round((TARGET_WIDTH - scaledCanvas.width) / 2);
+  const offsetY = Math.round((TARGET_HEIGHT - scaledCanvas.height) / 2);
 
-  finalCtx.drawImage(currentCanvas, offsetX, offsetY, currentWidth, currentHeight);
+  finalCtx.drawImage(scaledCanvas, offsetX, offsetY);
 
-  onProgress?.(95, 'Generating final PNG...');
-  
-  const result = await canvasToBlob(finalCanvas);
-  onProgress?.(100, 'Complete!');
-  
-  return result;
-}
-
-/**
- * Clean up frizzy/semi-transparent edges
- * This removes the "fringing" around transparent edges
- */
-function cleanAlphaEdges(canvas: HTMLCanvasElement, iterations: number = 2): void {
-  const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const { data, width, height } = imageData;
-  
-  for (let iter = 0; iter < iterations; iter++) {
-    const result = new Uint8ClampedArray(data);
-    
-    for (let y = 1; y < height - 1; y++) {
-      for (let x = 1; x < width - 1; x++) {
-        const idx = (y * width + x) * 4;
-        const alpha = data[idx + 3];
-        
-        // Target semi-transparent pixels (fringe)
-        if (alpha > 10 && alpha < 240) {
-          // Count neighbors with high alpha
-          let solidNeighbors = 0;
-          let transparentNeighbors = 0;
-          let avgR = 0, avgG = 0, avgB = 0;
-          let solidCount = 0;
-          
-          for (let dy = -1; dy <= 1; dy++) {
-            for (let dx = -1; dx <= 1; dx++) {
-              if (dx === 0 && dy === 0) continue;
-              const nIdx = ((y + dy) * width + (x + dx)) * 4;
-              const nAlpha = data[nIdx + 3];
-              
-              if (nAlpha > 200) {
-                solidNeighbors++;
-                avgR += data[nIdx];
-                avgG += data[nIdx + 1];
-                avgB += data[nIdx + 2];
-                solidCount++;
-              } else if (nAlpha < 30) {
-                transparentNeighbors++;
-              }
-            }
-          }
-          
-          // If mostly surrounded by transparent, make fully transparent
-          if (transparentNeighbors >= 5) {
-            result[idx + 3] = 0;
-          }
-          // If mostly surrounded by solid, make solid and blend color
-          else if (solidNeighbors >= 5 && solidCount > 0) {
-            result[idx] = Math.round(avgR / solidCount);
-            result[idx + 1] = Math.round(avgG / solidCount);
-            result[idx + 2] = Math.round(avgB / solidCount);
-            result[idx + 3] = 255;
-          }
-          // Edge case: threshold the alpha
-          else if (alpha < 128) {
-            result[idx + 3] = 0;
-          } else {
-            result[idx + 3] = 255;
-          }
-        }
-      }
-    }
-    
-    // Copy result back
-    for (let i = 0; i < data.length; i++) {
-      data[i] = result[i];
-    }
-  }
-  
-  ctx.putImageData(imageData, 0, 0);
-}
-
-/**
- * Enhanced sharpening using unsharp mask technique
- */
-function sharpenCanvas(canvas: HTMLCanvasElement, strength: number = 0.3): HTMLCanvasElement {
-  const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const { data, width, height } = imageData;
-  
-  const result = new Uint8ClampedArray(data);
-  
-  // Use a 5x5 kernel for smoother sharpening
-  const kernel = [
-    0, -1, -1, -1, 0,
-    -1, 2, -4, 2, -1,
-    -1, -4, 24, -4, -1,
-    -1, 2, -4, 2, -1,
-    0, -1, -1, -1, 0
-  ];
-  const kernelSum = 8;
-  
-  for (let y = 2; y < height - 2; y++) {
-    for (let x = 2; x < width - 2; x++) {
-      const idx = (y * width + x) * 4;
-      
-      // Skip transparent pixels
-      if (data[idx + 3] < 10) continue;
-      
-      for (let c = 0; c < 3; c++) {
-        let sum = 0;
-        let ki = 0;
-        
-        for (let ky = -2; ky <= 2; ky++) {
-          for (let kx = -2; kx <= 2; kx++) {
-            const nIdx = ((y + ky) * width + (x + kx)) * 4 + c;
-            sum += data[nIdx] * kernel[ki];
-            ki++;
-          }
-        }
-        
-        const sharpened = sum / kernelSum;
-        const original = data[idx + c];
-        const blended = original + (sharpened - original) * strength;
-        
-        result[idx + c] = Math.max(0, Math.min(255, Math.round(blended)));
-      }
-    }
-  }
-  
-  ctx.putImageData(new ImageData(result, width, height), 0, 0);
-  return canvas;
+  return canvasToBlob(finalCanvas);
 }
 
 function findContentBounds(imageData: ImageData): { left: number; top: number; right: number; bottom: number } {
