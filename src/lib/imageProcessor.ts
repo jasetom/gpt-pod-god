@@ -89,8 +89,8 @@ export async function resizeToTarget(imageBlob: Blob): Promise<Blob> {
   const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
   const bounds = findContentBounds(imageData);
 
-  // Crop to content with small padding
-  const padding = Math.round(Math.max(img.naturalWidth, img.naturalHeight) * 0.02);
+  // Crop to content with generous padding to avoid cutting off edges
+  const padding = Math.round(Math.max(img.naturalWidth, img.naturalHeight) * 0.05);
   const cropLeft = Math.max(0, bounds.left - padding);
   const cropTop = Math.max(0, bounds.top - padding);
   const cropRight = Math.min(tempCanvas.width - 1, bounds.right + padding);
@@ -149,7 +149,8 @@ function findContentBounds(imageData: ImageData): { left: number; top: number; r
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const alpha = data[(y * width + x) * 4 + 3];
-      if (alpha > 20) {
+      // Use low threshold to catch all visible pixels including semi-transparent edges
+      if (alpha > 5) {
         if (x < left) left = x;
         if (x > right) right = x;
         if (y < top) top = y;
