@@ -27,9 +27,9 @@ serve(async (req) => {
       throw new Error('FAL_KEY is not configured');
     }
 
-    console.log('Step 1: Generating design with gpt-image-1-mini...');
+    console.log('Step 1: Generating design with gpt-image-1-mini (transparent background)...');
 
-    // Step 1: Generate the initial design
+    // Step 1: Generate the initial design with transparent background
     const generateResponse = await fetch('https://fal.run/fal-ai/gpt-image-1-mini', {
       method: 'POST',
       headers: {
@@ -84,10 +84,10 @@ Create a professional, print-ready isolated illustration.`,
       throw new Error('No image generated');
     }
 
-    console.log('Step 2: Refining edges with BiRefNet...');
+    console.log('Step 2: Upscaling with ESRGAN (preserves transparency)...');
 
-    // Step 2: Use BiRefNet for high-quality edge refinement
-    const birefnetResponse = await fetch('https://fal.run/fal-ai/birefnet', {
+    // Step 2: Use ESRGAN for upscaling - it preserves alpha channel unlike diffusion upscalers
+    const esrganResponse = await fetch('https://fal.run/fal-ai/esrgan', {
       method: 'POST',
       headers: {
         'Authorization': `Key ${FAL_KEY}`,
@@ -95,57 +95,50 @@ Create a professional, print-ready isolated illustration.`,
       },
       body: JSON.stringify({
         image_url: initialImageUrl,
-        model: 'General',
-        operating_resolution: '1024x1024',
-        output_format: 'png'
+        scale: 4, // 4x upscale: 1024 -> 4096
+        face_enhance: false
       }),
     });
 
-    if (!birefnetResponse.ok) {
-      console.error('BiRefNet error, using original image');
-      // Fall back to original if BiRefNet fails
+    if (!esrganResponse.ok) {
+      const errorText = await esrganResponse.text();
+      console.error('ESRGAN error:', esrganResponse.status, errorText);
+      // Fall back to original if ESRGAN fails
     }
 
-    let refinedImageUrl = initialImageUrl;
-    if (birefnetResponse.ok) {
-      const birefnetResult = await birefnetResponse.json();
-      refinedImageUrl = birefnetResult.image?.url || initialImageUrl;
-      console.log('Edge refinement complete');
+    let upscaledImageUrl = initialImageUrl;
+    if (esrganResponse.ok) {
+      const esrganResult = await esrganResponse.json();
+      upscaledImageUrl = esrganResult.image?.url || initialImageUrl;
+      console.log('ESRGAN upscaling complete');
     }
 
-    console.log('Step 3: AI upscaling with Clarity Upscaler...');
+    console.log('Step 3: Refining edges with BiRefNet...');
 
-    // Step 3: Use Clarity Upscaler for high-quality AI upscaling
-    const upscaleResponse = await fetch('https://fal.run/fal-ai/clarity-upscaler', {
+    // Step 3: Use BiRefNet for high-quality edge refinement on the upscaled image
+    const birefnetResponse = await fetch('https://fal.run/fal-ai/birefnet', {
       method: 'POST',
       headers: {
         'Authorization': `Key ${FAL_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        image_url: refinedImageUrl,
-        scale: 4,
-        creativity: 0.2,
-        resemblance: 0.9,
-        prompt: 'high quality vector illustration, sharp edges, clean lines, professional t-shirt design',
-        negative_prompt: 'blurry, low quality, pixelated, noisy, grainy, artifacts',
-        guidance_scale: 7.5,
-        num_inference_steps: 25,
-        enable_safety_checker: false
+        image_url: upscaledImageUrl,
+        model: 'General',
+        output_format: 'png'
       }),
     });
 
-    if (!upscaleResponse.ok) {
-      const errorText = await upscaleResponse.text();
-      console.error('Upscale error:', upscaleResponse.status, errorText);
-      // Continue with non-upscaled version if upscaling fails
+    if (!birefnetResponse.ok) {
+      console.error('BiRefNet error, using upscaled image');
+      // Fall back to upscaled image if BiRefNet fails
     }
 
-    let finalImageUrl = refinedImageUrl;
-    if (upscaleResponse.ok) {
-      const upscaleResult = await upscaleResponse.json();
-      finalImageUrl = upscaleResult.image?.url || refinedImageUrl;
-      console.log('AI upscaling complete');
+    let finalImageUrl = upscaledImageUrl;
+    if (birefnetResponse.ok) {
+      const birefnetResult = await birefnetResponse.json();
+      finalImageUrl = birefnetResult.image?.url || upscaledImageUrl;
+      console.log('Edge refinement complete');
     }
 
     console.log('Step 4: Fetching final image...');
@@ -175,7 +168,7 @@ Create a professional, print-ready isolated illustration.`,
       JSON.stringify({ 
         success: true,
         imageUrl: dataUrl,
-        message: 'Design generated, refined, and upscaled successfully'
+        message: 'Design generated, upscaled (4x), and edges refined'
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

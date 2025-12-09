@@ -20,15 +20,15 @@ export type StepInfo = {
 
 export const STEPS: StepInfo[] = [
   { id: 'generating', label: 'Generating', description: 'AI creates your design' },
-  { id: 'refining', label: 'Refining', description: 'Cleaning edges with AI' },
-  { id: 'upscaling', label: 'Upscaling', description: 'AI super-resolution 4x' },
+  { id: 'upscaling', label: 'Upscaling', description: 'ESRGAN 4x super-resolution' },
+  { id: 'refining', label: 'Refining', description: 'BiRefNet edge cleanup' },
   { id: 'complete', label: 'Complete', description: 'Ready to download' },
 ];
 
 const STEP_PROGRESS: Record<string, { start: number; end: number }> = {
-  generating: { start: 0, end: 35 },
-  refining: { start: 35, end: 55 },
-  upscaling: { start: 55, end: 90 },
+  generating: { start: 0, end: 40 },
+  upscaling: { start: 40, end: 70 },
+  refining: { start: 70, end: 90 },
   finalizing: { start: 90, end: 100 },
 };
 
@@ -78,19 +78,19 @@ export function useDesignGenerator() {
       
       const stageMessages: Record<string, string[]> = {
         generating: [
-          'Creating your design with AI...',
+          'Creating your design with GPT Image...',
           'Composing visual elements...',
-          'Applying style and colors...',
-        ],
-        refining: [
-          'Analyzing edges with BiRefNet AI...',
-          'Cleaning transparency boundaries...',
-          'Perfecting edge quality...',
+          'Rendering with transparent background...',
         ],
         upscaling: [
-          'AI super-resolution in progress...',
-          'Enhancing details with Clarity AI...',
-          'Sharpening and finalizing...',
+          'ESRGAN 4x super-resolution...',
+          'Enhancing pixel details...',
+          'Preserving transparency...',
+        ],
+        refining: [
+          'BiRefNet edge analysis...',
+          'Cleaning transparency boundaries...',
+          'Perfecting edge quality...',
         ],
       };
 
@@ -116,11 +116,11 @@ export function useDesignGenerator() {
           if (currentProgress >= end - 10 && stageIndex < stages.length - 1) {
             stageIndex++;
             const nextStage = stages[stageIndex];
-            if (nextStage === 'refining') {
-              setStep('refining');
-              setCurrentStepIndex(1);
-            } else if (nextStage === 'upscaling') {
+            if (nextStage === 'upscaling') {
               setStep('upscaling');
+              setCurrentStepIndex(1);
+            } else if (nextStage === 'refining') {
+              setStep('refining');
               setCurrentStepIndex(2);
             }
           }
