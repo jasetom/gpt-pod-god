@@ -87,26 +87,34 @@ Create a professional, print-ready isolated illustration.`,
     console.log('Step 2: Refining edges with BiRefNet...');
 
     // Step 2: Use BiRefNet for high-quality edge refinement (preserves transparency)
-    const birefnetResponse = await fetch('https://fal.run/fal-ai/birefnet', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Key ${FAL_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        image_url: initialImageUrl,
-        model: 'General',
-        output_format: 'png'
-      }),
-    });
-
     let finalImageUrl = initialImageUrl;
-    if (birefnetResponse.ok) {
-      const birefnetResult = await birefnetResponse.json();
-      finalImageUrl = birefnetResult.image?.url || initialImageUrl;
-      console.log('Edge refinement complete');
-    } else {
-      console.error('BiRefNet error, using original image');
+    
+    try {
+      const birefnetResponse = await fetch('https://fal.run/fal-ai/birefnet', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Key ${FAL_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          image_url: initialImageUrl,
+          model: 'General Use (Light)',
+          operating_resolution: '1024x1024',
+          output_format: 'png'
+        }),
+      });
+
+      if (birefnetResponse.ok) {
+        const birefnetResult = await birefnetResponse.json();
+        console.log('BiRefNet result:', JSON.stringify(birefnetResult));
+        finalImageUrl = birefnetResult.image?.url || initialImageUrl;
+        console.log('Edge refinement complete, URL:', finalImageUrl);
+      } else {
+        const errorText = await birefnetResponse.text();
+        console.error('BiRefNet error:', birefnetResponse.status, errorText);
+      }
+    } catch (birefnetError) {
+      console.error('BiRefNet exception:', birefnetError);
     }
 
     console.log('Step 3: Fetching final image...');
