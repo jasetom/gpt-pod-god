@@ -38,7 +38,6 @@ export function useDesignGenerator() {
   const [step, setStep] = useState<GenerationStep>('idle');
   const [currentStepIndex, setCurrentStepIndex] = useState(-1);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [rawPreviewUrl, setRawPreviewUrl] = useState<string | null>(null);
   const [finalBlob, setFinalBlob] = useState<Blob | null>(null);
   const [prompt, setPrompt] = useState('');
   const [progress, setProgress] = useState(0);
@@ -48,7 +47,6 @@ export function useDesignGenerator() {
     setStep('idle');
     setCurrentStepIndex(-1);
     setPreviewUrl(null);
-    setRawPreviewUrl(null);
     setFinalBlob(null);
     setPrompt('');
     setProgress(0);
@@ -60,7 +58,6 @@ export function useDesignGenerator() {
     setStep('idle');
     setCurrentStepIndex(-1);
     setPreviewUrl(null);
-    setRawPreviewUrl(null);
     setFinalBlob(null);
     setProgress(0);
     setProgressMessage('');
@@ -132,11 +129,6 @@ export function useDesignGenerator() {
       if (data.error) throw new Error(data.error);
       if (!data.imageUrl) throw new Error('No image received');
 
-      // Set raw preview URL (from GPT Image without processing)
-      if (data.rawImageUrl) {
-        setRawPreviewUrl(data.rawImageUrl);
-      }
-
       setProgress(73);
       setProgressMessage('Scaling to print resolution...');
       setStep('upscaling');
@@ -200,7 +192,6 @@ export function useDesignGenerator() {
     step,
     currentStepIndex,
     previewUrl,
-    rawPreviewUrl,
     finalBlob,
     prompt,
     progress,
