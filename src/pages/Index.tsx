@@ -99,6 +99,8 @@ const Index = () => {
                 progress={progress}
                 progressMessage={progressMessage}
                 title="Raw GPT Output (1024×1024)"
+                dimensions="1024×1024px"
+                ratio="1:1 Ratio"
               />
             )}
             
