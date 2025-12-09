@@ -25,9 +25,11 @@ export const STEPS: StepInfo[] = [
   { id: 'complete', label: 'Complete', description: 'Ready to download' },
 ];
 
+// Expected total time ~50 seconds, distribute progress smoothly
+const EXPECTED_TOTAL_TIME_MS = 50000;
 const STEP_PROGRESS: Record<string, { start: number; end: number }> = {
-  generating: { start: 0, end: 55 },
-  refining: { start: 55, end: 72 },
+  generating: { start: 0, end: 60 },
+  refining: { start: 60, end: 72 },
   upscaling: { start: 72, end: 95 },
   finalizing: { start: 95, end: 100 },
 };
@@ -71,57 +73,49 @@ export function useDesignGenerator() {
       setProgress(0);
       setProgressMessage('Starting design creation...');
 
-      // Smooth progress simulation
-      let currentProgress = 0;
-      const stages = ['generating', 'refining'];
-      let stageIndex = 0;
+      // Time-based progress simulation for smooth, predictable updates
+      const startTime = Date.now();
+      const serverPhaseEnd = 72; // Server handles generation + refining up to 72%
+      const serverExpectedTime = EXPECTED_TOTAL_TIME_MS * 0.85; // ~42 seconds for server phase
       
-      const stageMessages: Record<string, string[]> = {
-        generating: [
-          'Preparing your design...',
-          'Creating visual elements...',
-          'Adding details and colors...',
-          'Finishing illustration...',
-        ],
-        refining: [
-          'Cleaning up edges...',
-          'Improving transparency...',
-          'Finalizing quality...',
-        ],
-      };
+      const messages = [
+        { at: 0, msg: 'Starting design creation...' },
+        { at: 8, msg: 'Preparing your design...' },
+        { at: 18, msg: 'Creating visual elements...' },
+        { at: 30, msg: 'Adding details and colors...' },
+        { at: 42, msg: 'Finishing illustration...' },
+        { at: 55, msg: 'Cleaning up edges...' },
+        { at: 62, msg: 'Improving transparency...' },
+        { at: 68, msg: 'Finalizing quality...' },
+      ];
+      
+      let lastMsgIndex = -1;
 
       progressInterval = setInterval(() => {
-        const currentStage = stages[stageIndex];
-        const stageInfo = STEP_PROGRESS[currentStage];
-        if (!stageInfo) return;
+        const elapsed = Date.now() - startTime;
+        // Use logarithmic easing so it slows down as it approaches the cap
+        const rawProgress = (elapsed / serverExpectedTime) * serverPhaseEnd;
+        // Cap at 70% to leave room before server responds
+        const cappedProgress = Math.min(rawProgress * (1 - rawProgress / 200), serverPhaseEnd - 2);
+        const displayProgress = Math.max(0, Math.min(Math.round(cappedProgress), serverPhaseEnd - 2));
         
-        const { start, end } = stageInfo;
+        setProgress(displayProgress);
         
-        if (currentProgress < end - 2) {
-          // Smoother, more consistent increments
-          const remaining = end - 2 - currentProgress;
-          const increment = Math.min(remaining * 0.08 + 0.3, 1.5);
-          currentProgress = Math.min(currentProgress + increment, end - 2);
-          setProgress(Math.round(currentProgress));
-          
-          const stageProgress = (currentProgress - start) / (end - start);
-          const messages = stageMessages[currentStage] || ['Processing...'];
-          const msgIndex = Math.min(
-            Math.floor(stageProgress * messages.length),
-            messages.length - 1
-          );
-          setProgressMessage(messages[msgIndex]);
-          
-          // Transition to next stage
-          if (currentProgress >= end - 4 && stageIndex < stages.length - 1) {
-            stageIndex++;
-            if (stages[stageIndex] === 'refining') {
-              setStep('refining');
-              setCurrentStepIndex(1);
-            }
+        // Update step based on progress
+        if (displayProgress >= 55 && step === 'generating') {
+          setStep('refining');
+          setCurrentStepIndex(1);
+        }
+        
+        // Update message based on progress thresholds
+        for (let i = messages.length - 1; i >= 0; i--) {
+          if (displayProgress >= messages[i].at && i > lastMsgIndex) {
+            setProgressMessage(messages[i].msg);
+            lastMsgIndex = i;
+            break;
           }
         }
-      }, 300);
+      }, 200);
 
       // Call the edge function (does all the heavy lifting)
       console.log('Calling generate-design edge function...');

@@ -48,43 +48,46 @@ function twoStepUpscale(
 }
 
 /**
- * Aggressively clean up transparency - no semi-transparent pixels allowed
+ * Aggressively clean up all semi-transparent and artifact pixels
+ * Removes colored semi-transparent pixels (like green blobs between letters)
  */
 function cleanEdges(canvas: HTMLCanvasElement): void {
   const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const { data, width, height } = imageData;
   
-  // First pass: hard threshold - anything below 200 alpha becomes transparent
+  // First pass: hard threshold - anything below 240 alpha becomes fully transparent
+  // This catches colored semi-transparent artifacts (like green between letters)
   for (let i = 0; i < data.length; i += 4) {
     const alpha = data[i + 3];
-    if (alpha < 200) {
+    if (alpha < 240) {
+      // Make fully transparent - zero out all channels
       data[i] = 0;     // R
       data[i + 1] = 0; // G
       data[i + 2] = 0; // B
-      data[i + 3] = 0; // A - fully transparent
+      data[i + 3] = 0; // A
     } else {
       data[i + 3] = 255; // Fully opaque
     }
   }
   
-  // Second pass: remove isolated pixels (noise cleanup)
+  // Second pass: remove small isolated pixel clusters (noise cleanup)
   const tempData = new Uint8ClampedArray(data);
-  for (let y = 1; y < height - 1; y++) {
-    for (let x = 1; x < width - 1; x++) {
+  for (let y = 2; y < height - 2; y++) {
+    for (let x = 2; x < width - 2; x++) {
       const idx = (y * width + x) * 4;
       if (tempData[idx + 3] === 255) {
-        // Count opaque neighbors
+        // Count opaque neighbors in 5x5 area
         let opaqueNeighbors = 0;
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -2; dy <= 2; dy++) {
+          for (let dx = -2; dx <= 2; dx++) {
             if (dx === 0 && dy === 0) continue;
             const nIdx = ((y + dy) * width + (x + dx)) * 4;
             if (tempData[nIdx + 3] === 255) opaqueNeighbors++;
           }
         }
-        // Remove if less than 3 opaque neighbors (isolated pixel)
-        if (opaqueNeighbors < 3) {
+        // Remove if less than 8 opaque neighbors in 5x5 (isolated small cluster)
+        if (opaqueNeighbors < 8) {
           data[idx] = 0;
           data[idx + 1] = 0;
           data[idx + 2] = 0;
