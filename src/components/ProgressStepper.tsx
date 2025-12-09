@@ -16,14 +16,14 @@ type ProgressStepperProps = {
 export function ProgressStepper({ steps, currentStep, status }: ProgressStepperProps) {
   return (
     <div className="w-full py-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-center">
         {steps.map((step, index) => {
           const isCompleted = index < currentStep;
           const isCurrent = index === currentStep;
           const isPending = index > currentStep;
 
           return (
-            <div key={step.id} className="flex flex-1 items-center">
+            <div key={step.id} className="flex items-center">
               <div className="flex flex-col items-center">
                 <div
                   className={cn(
@@ -70,7 +70,7 @@ export function ProgressStepper({ steps, currentStep, status }: ProgressStepperP
 
               {/* Connector line */}
               {index < steps.length - 1 && (
-                <div className="flex-1 mx-4 h-0.5 mt-[-2rem]">
+                <div className="w-16 sm:w-24 h-0.5 mx-2 sm:mx-4 mt-[-2rem]">
                   <div
                     className={cn(
                       "h-full rounded-full transition-all duration-500",

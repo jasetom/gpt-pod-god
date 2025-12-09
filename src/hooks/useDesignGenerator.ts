@@ -19,16 +19,16 @@ export type StepInfo = {
 };
 
 export const STEPS: StepInfo[] = [
-  { id: 'generating', label: 'Generating', description: 'AI creates your design' },
-  { id: 'refining', label: 'Refining', description: 'BiRefNet edge cleanup' },
+  { id: 'generating', label: 'Generating', description: 'Creating your design' },
+  { id: 'refining', label: 'Refining', description: 'Cleaning up edges' },
   { id: 'upscaling', label: 'Upscaling', description: 'Scaling to print size' },
   { id: 'complete', label: 'Complete', description: 'Ready to download' },
 ];
 
 const STEP_PROGRESS: Record<string, { start: number; end: number }> = {
-  generating: { start: 0, end: 50 },
-  refining: { start: 50, end: 75 },
-  upscaling: { start: 75, end: 95 },
+  generating: { start: 0, end: 55 },
+  refining: { start: 55, end: 72 },
+  upscaling: { start: 72, end: 95 },
   finalizing: { start: 95, end: 100 },
 };
 
@@ -69,23 +69,24 @@ export function useDesignGenerator() {
       setStep('generating');
       setCurrentStepIndex(0);
       setProgress(0);
-      setProgressMessage('Starting AI generation...');
+      setProgressMessage('Starting design creation...');
 
-      // Simulate progress through stages
+      // Smooth progress simulation
       let currentProgress = 0;
       const stages = ['generating', 'refining'];
       let stageIndex = 0;
       
       const stageMessages: Record<string, string[]> = {
         generating: [
-          'Creating your design with GPT Image...',
-          'Composing visual elements...',
-          'Rendering with transparent background...',
+          'Preparing your design...',
+          'Creating visual elements...',
+          'Adding details and colors...',
+          'Finishing illustration...',
         ],
         refining: [
-          'BiRefNet edge analysis...',
-          'Cleaning transparency boundaries...',
-          'Perfecting edge quality...',
+          'Cleaning up edges...',
+          'Improving transparency...',
+          'Finalizing quality...',
         ],
       };
 
@@ -96,9 +97,11 @@ export function useDesignGenerator() {
         
         const { start, end } = stageInfo;
         
-        if (currentProgress < end - 3) {
-          const increment = Math.random() * 1.5 + 0.5;
-          currentProgress = Math.min(currentProgress + increment, end - 3);
+        if (currentProgress < end - 2) {
+          // Smoother, more consistent increments
+          const remaining = end - 2 - currentProgress;
+          const increment = Math.min(remaining * 0.08 + 0.3, 1.5);
+          currentProgress = Math.min(currentProgress + increment, end - 2);
           setProgress(Math.round(currentProgress));
           
           const stageProgress = (currentProgress - start) / (end - start);
@@ -109,7 +112,8 @@ export function useDesignGenerator() {
           );
           setProgressMessage(messages[msgIndex]);
           
-          if (currentProgress >= end - 5 && stageIndex < stages.length - 1) {
+          // Transition to next stage
+          if (currentProgress >= end - 4 && stageIndex < stages.length - 1) {
             stageIndex++;
             if (stages[stageIndex] === 'refining') {
               setStep('refining');
@@ -117,7 +121,7 @@ export function useDesignGenerator() {
             }
           }
         }
-      }, 350);
+      }, 300);
 
       // Call the edge function (does all the heavy lifting)
       console.log('Calling generate-design edge function...');
@@ -131,8 +135,8 @@ export function useDesignGenerator() {
       if (data.error) throw new Error(data.error);
       if (!data.imageUrl) throw new Error('No image received');
 
-      setProgress(76);
-      setProgressMessage('Upscaling to print resolution...');
+      setProgress(73);
+      setProgressMessage('Scaling to print resolution...');
       setStep('upscaling');
       setCurrentStepIndex(2);
 
@@ -145,11 +149,14 @@ export function useDesignGenerator() {
       }
       let imageBlob = new Blob([bytes], { type: 'image/png' });
 
-      setProgress(85);
-      setProgressMessage('Fitting to 4500×5400 canvas...');
+      setProgress(82);
+      setProgressMessage('Preparing high-resolution output...');
 
       // Resize to target dimensions
       imageBlob = await resizeToTarget(imageBlob);
+      
+      setProgress(95);
+      setProgressMessage('Almost done...');
       
       setPreviewUrl(URL.createObjectURL(imageBlob));
       setFinalBlob(imageBlob);
@@ -158,8 +165,8 @@ export function useDesignGenerator() {
       setStep('complete');
       setCurrentStepIndex(3);
       setProgress(100);
-      setProgressMessage('Complete!');
-      toast.success('Your high-quality design is ready!');
+      setProgressMessage('Done!');
+      toast.success('Your design is ready!');
 
     } catch (error) {
       if (progressInterval) clearInterval(progressInterval);
