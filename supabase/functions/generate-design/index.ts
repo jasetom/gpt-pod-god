@@ -72,6 +72,17 @@ The final output MUST be a fully isolated design on a 100% transparent backgroun
 * The design must contain zero background color, zero shapes, zero glow, zero haze, zero shadows, zero gradients, zero noise outside the main illustration.
 * Background MUST be pure transparency only.
 
+### FRAME & TRANSPARENCY REQUIREMENTS
+
+* The entire design MUST fit completely within the image frame.
+* No part of the artwork may be cut off, cropped, or touching any edge of the canvas.
+* There must be a clean, even transparent margin around the entire illustration.
+* Background must remain 100% transparent with **no shapes, no fragments, no noise, no haze, no color bleed, no gradient fade** near the edges.
+* Do NOT extend any stroke, glow, fade, or color beyond the interior of the illustration.
+* The illustration should appear centered with balanced spacing on all sides.
+* No clipped elements, no incomplete outlines, no truncated shapes.
+* All outlines and shapes must be fully visible and fully contained inside the boundaries of the canvas.
+
 ### INTERIOR COLOR RULES
 
 * All interior areas of the design MUST be fully filled with opaque color.
