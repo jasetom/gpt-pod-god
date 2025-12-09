@@ -39,22 +39,26 @@ serve(async (req) => {
       body: JSON.stringify({
         prompt: `Create a professional print-on-demand t-shirt design illustration.
 
-STYLE REQUIREMENTS:
-- Vector/flat illustration style with bold, saturated colors
-- Clean, crisp edges suitable for printing on merchandise
-- Modern flat design aesthetic with bold outlines
-- Cartoon/illustration style that translates well to print
+CRITICAL STYLE REQUIREMENTS:
+- Vector/flat illustration style with 100% SOLID, OPAQUE colors only
+- Every colored area must be completely solid with NO transparency, NO gradients, NO semi-transparent effects
+- Bold black outlines around all elements
+- Hard, crisp edges - no soft edges, no anti-aliasing blur, no glow effects
+- Modern flat design aesthetic similar to screen printing
+- Cartoon/illustration style with sharp color boundaries
 - Centered composition
 
-DO NOT include:
-- Any background elements - the subject should be isolated
-- Very light colors or pastels
-- Complex textures or photorealistic elements
-- Text unless specifically requested
+ABSOLUTELY DO NOT include:
+- Any background elements, colors, or fills between design elements
+- Semi-transparent pixels, gradients, shadows, or glows
+- Soft edges or feathered boundaries
+- Any color behind, between, or around text letters
+- Photorealistic textures or subtle color variations
+- Light colors, pastels, or low-opacity fills
 
 DESIGN REQUEST: ${prompt}
 
-Create a professional, print-ready isolated illustration.`,
+Create a print-ready isolated illustration with completely solid opaque colors and perfectly clean transparent background.`,
         image_size: '1024x1024',
         background: 'transparent',
         quality: 'high',
