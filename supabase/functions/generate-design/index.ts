@@ -201,10 +201,10 @@ ${sanitizedPrompt}`,
     };
 
     // Parallel: fetch original image AND run ESRGAN upscale
-    const [imageResponse, esrganResult] = await Promise.all([
+    const [imageResponse, esrganImageUrl] = await Promise.all([
       // Fetch original image
       fetch(initialImageUrl),
-      // Run ESRGAN 6x upscale
+      // Run ESRGAN 6x upscale - return URL only (avoid CPU timeout on base64 conversion)
       (async () => {
         try {
           console.log('Starting ESRGAN 6x upscale...');
@@ -226,23 +226,15 @@ ${sanitizedPrompt}`,
           }
 
           const esrganData = await esrganResponse.json();
-          const esrganImageUrl = esrganData.image?.url;
+          const url = esrganData.image?.url;
           
-          if (!esrganImageUrl) {
+          if (!url) {
             console.error('No ESRGAN image URL returned');
             return null;
           }
 
-          // Fetch the upscaled image
-          const esrganImageResponse = await fetch(esrganImageUrl);
-          if (!esrganImageResponse.ok) {
-            console.error('Failed to fetch ESRGAN image');
-            return null;
-          }
-
-          const esrganBuffer = await esrganImageResponse.arrayBuffer();
           console.log('ESRGAN upscale complete!');
-          return arrayBufferToDataUrl(esrganBuffer);
+          return url;
         } catch (err) {
           console.error('ESRGAN upscale error:', err);
           return null;
@@ -263,7 +255,7 @@ ${sanitizedPrompt}`,
       JSON.stringify({ 
         success: true,
         imageUrl: dataUrl,
-        esrganImageUrl: esrganResult,
+        esrganImageUrl: esrganImageUrl,
         message: 'Design generated successfully'
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
