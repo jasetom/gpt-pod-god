@@ -242,11 +242,11 @@ ${sanitizedPrompt}`,
         }
       })(),
       
-      // Anime ESRGAN (RealESRGAN_x4plus_anime_6B) - optimized for flat illustrations
+      // RealESRGAN_x4plus - optimized for realistic detail enhancement
       (async () => {
         try {
-          console.log('Starting Anime ESRGAN upscale...');
-          const animeResponse = await fetch('https://fal.run/fal-ai/esrgan', {
+          console.log('Starting RealESRGAN x4plus upscale...');
+          const realEsrganResponse = await fetch('https://fal.run/fal-ai/esrgan', {
             method: 'POST',
             headers: {
               'Authorization': `Key ${FAL_KEY}`,
@@ -255,24 +255,24 @@ ${sanitizedPrompt}`,
             body: JSON.stringify({
               image_url: initialImageUrl,
               scale: 4,
-              model: 'RealESRGAN_x4plus_anime_6B',
+              model: 'RealESRGAN_x4plus',
             }),
           });
 
-          if (!animeResponse.ok) {
-            console.error('Anime ESRGAN upscale failed:', animeResponse.status);
+          if (!realEsrganResponse.ok) {
+            console.error('RealESRGAN x4plus upscale failed:', realEsrganResponse.status);
             return null;
           }
 
-          const animeData = await animeResponse.json();
-          const url = animeData.image?.url;
+          const realEsrganData = await realEsrganResponse.json();
+          const url = realEsrganData.image?.url;
           
           if (!url) {
-            console.error('No Anime ESRGAN image URL returned');
+            console.error('No RealESRGAN x4plus image URL returned');
             return null;
           }
 
-          console.log('Anime ESRGAN upscale complete!');
+          console.log('RealESRGAN x4plus upscale complete!');
           return url;
         } catch (err) {
           console.error('Anime ESRGAN upscale error:', err);
