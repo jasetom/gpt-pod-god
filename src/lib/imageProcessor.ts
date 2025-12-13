@@ -307,6 +307,72 @@ export async function processEsrganWithAlpha(
   return canvasToBlob(finalCanvas);
 }
 
+/**
+ * Apply sharpening filter to an image using convolution
+ * Uses unsharp mask technique for enhanced edge definition
+ */
+export async function applySharpeningFilter(
+  sourceBlob: Blob,
+  strength: number = 1.5
+): Promise<Blob> {
+  console.log('Applying sharpening filter with strength:', strength);
+  
+  const img = await loadImage(sourceBlob);
+  
+  const canvas = document.createElement('canvas');
+  canvas.width = img.naturalWidth;
+  canvas.height = img.naturalHeight;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+  ctx.drawImage(img, 0, 0);
+  
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const { data, width, height } = imageData;
+  
+  // Create output buffer
+  const output = new Uint8ClampedArray(data);
+  
+  // Sharpening kernel (unsharp mask)
+  // Center weight is increased for stronger sharpening
+  const center = 1 + 4 * strength;
+  const edge = -strength;
+  
+  // Apply convolution (skip edges to avoid boundary issues)
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const idx = (y * width + x) * 4;
+      
+      // Only process pixels with significant alpha
+      if (data[idx + 3] < 25) continue;
+      
+      for (let c = 0; c < 3; c++) { // RGB only, preserve alpha
+        const topIdx = ((y - 1) * width + x) * 4 + c;
+        const bottomIdx = ((y + 1) * width + x) * 4 + c;
+        const leftIdx = (y * width + (x - 1)) * 4 + c;
+        const rightIdx = (y * width + (x + 1)) * 4 + c;
+        const centerIdx = idx + c;
+        
+        const value = 
+          data[centerIdx] * center +
+          data[topIdx] * edge +
+          data[bottomIdx] * edge +
+          data[leftIdx] * edge +
+          data[rightIdx] * edge;
+        
+        output[centerIdx] = Math.max(0, Math.min(255, Math.round(value)));
+      }
+      // Keep original alpha
+      output[idx + 3] = data[idx + 3];
+    }
+  }
+  
+  // Put sharpened data back
+  const outputData = new ImageData(output, width, height);
+  ctx.putImageData(outputData, 0, 0);
+  
+  console.log('Sharpening complete!');
+  return canvasToBlob(canvas);
+}
+
 function findContentBounds(imageData: ImageData): { left: number; top: number; right: number; bottom: number } {
   const { data, width, height } = imageData;
   let left = width, top = height, right = 0, bottom = 0;
