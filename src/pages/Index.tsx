@@ -12,7 +12,6 @@ const Index = () => {
     generate,
     downloadStandard,
     downloadEsrgan,
-    downloadSharpened,
     isProcessing,
     getStepDescription,
     progress,
@@ -87,8 +86,8 @@ const Index = () => {
             </div>
           </div>
 
-          {/* Preview Section - Three columns when complete */}
-          <div className="grid lg:grid-cols-3 gap-6">
+          {/* Preview Section - Two columns when complete */}
+          <div className="grid lg:grid-cols-2 gap-6">
             {/* Standard Output */}
             <ImagePreview
               imageUrl={designs.standard?.previewUrl || null}
@@ -99,7 +98,7 @@ const Index = () => {
               progressMessage={progressMessage}
               title="Standard"
               dimensions="4500×5400px"
-              ratio="4:5 Ratio"
+              ratio="2:3 Ratio"
             />
 
             {/* ESRGAN Output */}
@@ -111,19 +110,6 @@ const Index = () => {
               progress={progress}
               progressMessage={progressMessage}
               title="ESRGAN (8x)"
-              dimensions="4500×5400px"
-              ratio="2:3 Ratio"
-            />
-
-            {/* Sharpened Output */}
-            <ImagePreview
-              imageUrl={designs.sharpened?.previewUrl || null}
-              isProcessing={isProcessing}
-              onDownload={downloadSharpened}
-              currentStepLabel={getCurrentStepLabel()}
-              progress={progress}
-              progressMessage={progressMessage}
-              title="ESRGAN + Sharp"
               dimensions="4500×5400px"
               ratio="2:3 Ratio"
             />
