@@ -216,7 +216,12 @@ ${sanitizedPrompt}`,
             },
             body: JSON.stringify({
               image_url: initialImageUrl,
-              scale: 6,
+              scale: 4,
+              model: 'RealESRGAN_x4plus',
+              face_enhance: false,
+              tile: 0,
+              tile_pad: 10,
+              pre_pad: 0,
             }),
           });
 
