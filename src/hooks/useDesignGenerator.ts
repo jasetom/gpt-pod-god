@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { downloadImage, resizeToTarget, processEsrganWithAlpha, applySharpeningFilter } from '@/lib/imageProcessor';
+import { downloadImage, resizeToTarget, processEsrganWithAlpha } from '@/lib/imageProcessor';
 import { toast } from 'sonner';
 
 export type GenerationStep = 
@@ -37,13 +37,12 @@ const STEP_PROGRESS: Record<string, { start: number; end: number }> = {
 export type GeneratedDesigns = {
   standard: { previewUrl: string; blob: Blob } | null;
   esrgan: { previewUrl: string; blob: Blob } | null;
-  sharpened: { previewUrl: string; blob: Blob } | null;
 };
 
 export function useDesignGenerator() {
   const [step, setStep] = useState<GenerationStep>('idle');
   const [currentStepIndex, setCurrentStepIndex] = useState(-1);
-  const [designs, setDesigns] = useState<GeneratedDesigns>({ standard: null, esrgan: null, sharpened: null });
+  const [designs, setDesigns] = useState<GeneratedDesigns>({ standard: null, esrgan: null });
   const [prompt, setPrompt] = useState('');
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState('');
@@ -51,7 +50,7 @@ export function useDesignGenerator() {
   const reset = useCallback(() => {
     setStep('idle');
     setCurrentStepIndex(-1);
-    setDesigns({ standard: null, esrgan: null, sharpened: null });
+    setDesigns({ standard: null, esrgan: null });
     setPrompt('');
     setProgress(0);
     setProgressMessage('');
@@ -61,7 +60,7 @@ export function useDesignGenerator() {
     // Full reset before starting new generation
     setStep('idle');
     setCurrentStepIndex(-1);
-    setDesigns({ standard: null, esrgan: null, sharpened: null });
+    setDesigns({ standard: null, esrgan: null });
     setProgress(0);
     setProgressMessage('');
     
@@ -186,28 +185,12 @@ export function useDesignGenerator() {
         })()
       ]);
       
-      // Process sharpened version from ESRGAN result (sequential since it depends on ESRGAN)
-      let sharpenedResult = null;
-      if (esrganResult) {
-        try {
-          console.log('Applying sharpening to ESRGAN result...');
-          const sharpenedBlob = await applySharpeningFilter(esrganResult.blob, 1.5);
-          sharpenedResult = {
-            previewUrl: URL.createObjectURL(sharpenedBlob),
-            blob: sharpenedBlob
-          };
-        } catch (err) {
-          console.error('Failed to apply sharpening:', err);
-        }
-      }
-
       setProgress(95);
       setProgressMessage('Almost done...');
       
       setDesigns({
         standard: standardResult,
-        esrgan: esrganResult,
-        sharpened: sharpenedResult
+        esrgan: esrganResult
       });
 
       // Complete
@@ -245,15 +228,6 @@ export function useDesignGenerator() {
     }
   }, [designs.esrgan]);
 
-  const downloadSharpened = useCallback(() => {
-    if (designs.sharpened?.blob) {
-      const timestamp = Date.now();
-      const filename = `pod-design-sharpened-${timestamp}.png`;
-      downloadImage(designs.sharpened.blob, filename);
-      toast.success('Sharpened design downloaded!');
-    }
-  }, [designs.sharpened]);
-
   const getStepDescription = useCallback(() => {
     if (currentStepIndex >= 0 && currentStepIndex < STEPS.length) {
       return STEPS[currentStepIndex].description;
@@ -271,7 +245,6 @@ export function useDesignGenerator() {
     generate,
     downloadStandard,
     downloadEsrgan,
-    downloadSharpened,
     reset,
     getStepDescription,
     isProcessing: step !== 'idle' && step !== 'complete' && step !== 'error',
