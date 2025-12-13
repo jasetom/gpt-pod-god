@@ -110,7 +110,7 @@ const Index = () => {
               progress={progress}
               progressMessage={progressMessage}
               title="ESRGAN (6x AI Upscale)"
-              dimensions="6144×9216px"
+              dimensions="4500×5400px"
               ratio="2:3 Ratio"
             />
           </div>

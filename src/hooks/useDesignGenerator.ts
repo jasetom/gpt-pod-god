@@ -158,14 +158,23 @@ export function useDesignGenerator() {
             blob: processedBlob
           };
         })(),
-        // ESRGAN: already upscaled from server, just convert to blob
+        // ESRGAN: fetch from URL and resize to target dimensions
         (async () => {
           if (!data.esrganImageUrl) return null;
           try {
-            const esrganBlob = base64ToBlob(data.esrganImageUrl);
+            console.log('Fetching ESRGAN image from URL...');
+            const esrganResponse = await fetch(data.esrganImageUrl);
+            if (!esrganResponse.ok) {
+              console.error('Failed to fetch ESRGAN image');
+              return null;
+            }
+            const esrganBlob = await esrganResponse.blob();
+            console.log('Resizing ESRGAN image to target dimensions...');
+            // Resize to same target as standard (4500x5400) for consistent output
+            const processedBlob = await resizeToTarget(esrganBlob);
             return {
-              previewUrl: URL.createObjectURL(esrganBlob),
-              blob: esrganBlob
+              previewUrl: URL.createObjectURL(processedBlob),
+              blob: processedBlob
             };
           } catch (err) {
             console.error('Failed to process ESRGAN image:', err);
