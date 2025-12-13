@@ -98,7 +98,7 @@ function cleanEdges(canvas: HTMLCanvasElement): void {
 }
 
 /**
- * Resize image to target dimensions with 2-step upscaling for quality
+ * Resize image to target dimensions with multi-step upscaling for quality
  */
 export async function resizeToTarget(imageBlob: Blob): Promise<Blob> {
   console.log('Processing image to target canvas:', TARGET_WIDTH, 'x', TARGET_HEIGHT);
@@ -165,6 +165,145 @@ export async function resizeToTarget(imageBlob: Blob): Promise<Blob> {
 
   finalCtx.drawImage(scaledCanvas, offsetX, offsetY);
 
+  return canvasToBlob(finalCanvas);
+}
+
+/**
+ * Process ESRGAN image by merging its RGB with upscaled alpha from original
+ * This preserves transparency while getting ESRGAN quality for RGB data
+ */
+export async function processEsrganWithAlpha(
+  originalBlob: Blob, 
+  esrganBlob: Blob
+): Promise<Blob> {
+  console.log('Processing ESRGAN with alpha channel preservation...');
+  
+  const [originalImg, esrganImg] = await Promise.all([
+    loadImage(originalBlob),
+    loadImage(esrganBlob)
+  ]);
+
+  // Create canvas for original (to extract alpha)
+  const originalCanvas = document.createElement('canvas');
+  originalCanvas.width = originalImg.naturalWidth;
+  originalCanvas.height = originalImg.naturalHeight;
+  const originalCtx = originalCanvas.getContext('2d', { willReadFrequently: true })!;
+  originalCtx.drawImage(originalImg, 0, 0);
+  
+  // Find content bounds from original
+  const originalData = originalCtx.getImageData(0, 0, originalCanvas.width, originalCanvas.height);
+  const bounds = findContentBounds(originalData);
+  
+  // Crop settings
+  const padding = Math.round(Math.max(originalImg.naturalWidth, originalImg.naturalHeight) * 0.025);
+  const cropLeft = Math.max(0, bounds.left - padding);
+  const cropTop = Math.max(0, bounds.top - padding);
+  const cropRight = Math.min(originalCanvas.width - 1, bounds.right + padding);
+  const cropBottom = Math.min(originalCanvas.height - 1, bounds.bottom + padding);
+  
+  const contentWidth = cropRight - cropLeft + 1;
+  const contentHeight = cropBottom - cropTop + 1;
+
+  // Calculate target size
+  const maxContentWidth = TARGET_WIDTH * DESIGN_FILL_RATIO;
+  const maxContentHeight = TARGET_HEIGHT * DESIGN_FILL_RATIO;
+  
+  const contentRatio = contentWidth / contentHeight;
+  const targetRatio = maxContentWidth / maxContentHeight;
+  
+  let finalContentWidth: number;
+  let finalContentHeight: number;
+  
+  if (contentRatio > targetRatio) {
+    finalContentWidth = maxContentWidth;
+    finalContentHeight = maxContentWidth / contentRatio;
+  } else {
+    finalContentHeight = maxContentHeight;
+    finalContentWidth = maxContentHeight * contentRatio;
+  }
+  
+  const scaledW = Math.round(finalContentWidth);
+  const scaledH = Math.round(finalContentHeight);
+
+  // Step 1: Extract and upscale alpha channel from original
+  console.log('Extracting and upscaling alpha channel...');
+  const alphaCanvas = multiStepUpscale(
+    originalCanvas,
+    cropLeft, cropTop, contentWidth, contentHeight,
+    scaledW, scaledH
+  );
+  const alphaCtx = alphaCanvas.getContext('2d', { willReadFrequently: true })!;
+  const alphaData = alphaCtx.getImageData(0, 0, scaledW, scaledH);
+  
+  // Step 2: Create canvas for ESRGAN and scale to same dimensions
+  console.log('Processing ESRGAN RGB...');
+  const esrganCanvas = document.createElement('canvas');
+  esrganCanvas.width = esrganImg.naturalWidth;
+  esrganCanvas.height = esrganImg.naturalHeight;
+  const esrganCtx = esrganCanvas.getContext('2d', { willReadFrequently: true })!;
+  esrganCtx.drawImage(esrganImg, 0, 0);
+  
+  // ESRGAN is already 6x upscaled, we need to find equivalent crop region
+  const esrganScale = esrganImg.naturalWidth / originalImg.naturalWidth;
+  const esrganCropLeft = Math.round(cropLeft * esrganScale);
+  const esrganCropTop = Math.round(cropTop * esrganScale);
+  const esrganCropWidth = Math.round(contentWidth * esrganScale);
+  const esrganCropHeight = Math.round(contentHeight * esrganScale);
+  
+  // Scale ESRGAN to match our target dimensions
+  const scaledEsrganCanvas = document.createElement('canvas');
+  scaledEsrganCanvas.width = scaledW;
+  scaledEsrganCanvas.height = scaledH;
+  const scaledEsrganCtx = scaledEsrganCanvas.getContext('2d', { willReadFrequently: true })!;
+  scaledEsrganCtx.imageSmoothingEnabled = true;
+  scaledEsrganCtx.imageSmoothingQuality = 'high';
+  scaledEsrganCtx.drawImage(
+    esrganCanvas,
+    esrganCropLeft, esrganCropTop, esrganCropWidth, esrganCropHeight,
+    0, 0, scaledW, scaledH
+  );
+  
+  const esrganData = scaledEsrganCtx.getImageData(0, 0, scaledW, scaledH);
+  
+  // Step 3: Merge ESRGAN RGB with original alpha
+  console.log('Merging RGB and alpha channels...');
+  const mergedData = scaledEsrganCtx.createImageData(scaledW, scaledH);
+  for (let i = 0; i < esrganData.data.length; i += 4) {
+    // RGB from ESRGAN
+    mergedData.data[i] = esrganData.data[i];
+    mergedData.data[i + 1] = esrganData.data[i + 1];
+    mergedData.data[i + 2] = esrganData.data[i + 2];
+    // Alpha from original (upscaled)
+    mergedData.data[i + 3] = alphaData.data[i + 3];
+    
+    // Clean near-transparent pixels
+    if (mergedData.data[i + 3] < 10) {
+      mergedData.data[i] = 0;
+      mergedData.data[i + 1] = 0;
+      mergedData.data[i + 2] = 0;
+      mergedData.data[i + 3] = 0;
+    }
+  }
+  
+  const mergedCanvas = document.createElement('canvas');
+  mergedCanvas.width = scaledW;
+  mergedCanvas.height = scaledH;
+  const mergedCtx = mergedCanvas.getContext('2d')!;
+  mergedCtx.putImageData(mergedData, 0, 0);
+  
+  // Step 4: Center on final canvas
+  const finalCanvas = document.createElement('canvas');
+  finalCanvas.width = TARGET_WIDTH;
+  finalCanvas.height = TARGET_HEIGHT;
+  const finalCtx = finalCanvas.getContext('2d')!;
+  finalCtx.clearRect(0, 0, TARGET_WIDTH, TARGET_HEIGHT);
+  
+  const offsetX = Math.round((TARGET_WIDTH - scaledW) / 2);
+  const offsetY = Math.round((TARGET_HEIGHT - scaledH) / 2);
+  
+  finalCtx.drawImage(mergedCanvas, offsetX, offsetY);
+  
+  console.log('ESRGAN with alpha processing complete!');
   return canvasToBlob(finalCanvas);
 }
 

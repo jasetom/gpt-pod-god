@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { downloadImage, resizeToTarget } from '@/lib/imageProcessor';
+import { downloadImage, resizeToTarget, processEsrganWithAlpha } from '@/lib/imageProcessor';
 import { toast } from 'sonner';
 
 export type GenerationStep = 
@@ -147,18 +147,20 @@ export function useDesignGenerator() {
         return new Blob([bytes], { type: 'image/png' });
       };
 
+      // Get original image blob first (needed for both standard and ESRGAN alpha)
+      const originalBlob = base64ToBlob(data.imageUrl);
+
       // Process both images in parallel
       const [standardResult, esrganResult] = await Promise.all([
         // Standard: client-side upscaling
         (async () => {
-          const imageBlob = base64ToBlob(data.imageUrl);
-          const processedBlob = await resizeToTarget(imageBlob);
+          const processedBlob = await resizeToTarget(originalBlob);
           return {
             previewUrl: URL.createObjectURL(processedBlob),
             blob: processedBlob
           };
         })(),
-        // ESRGAN: fetch from URL and resize to target dimensions
+        // ESRGAN: fetch from URL and merge RGB with alpha from original
         (async () => {
           if (!data.esrganImageUrl) return null;
           try {
@@ -169,9 +171,9 @@ export function useDesignGenerator() {
               return null;
             }
             const esrganBlob = await esrganResponse.blob();
-            console.log('Resizing ESRGAN image to target dimensions...');
-            // Resize to same target as standard (4500x5400) for consistent output
-            const processedBlob = await resizeToTarget(esrganBlob);
+            console.log('Processing ESRGAN with alpha preservation...');
+            // Use ESRGAN RGB with alpha from original for transparency preservation
+            const processedBlob = await processEsrganWithAlpha(originalBlob, esrganBlob);
             return {
               previewUrl: URL.createObjectURL(processedBlob),
               blob: processedBlob
