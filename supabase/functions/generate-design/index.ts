@@ -185,24 +185,77 @@ ${sanitizedPrompt}`,
       throw new Error('No image generated');
     }
 
-    console.log('Fetching generated image...');
+    console.log('Fetching generated image and starting ESRGAN upscale in parallel...');
 
-    // Fetch the image and convert to base64
-    const imageResponse = await fetch(initialImageUrl);
+    // Helper to convert array buffer to base64 data URL
+    const arrayBufferToDataUrl = (buffer: ArrayBuffer): string => {
+      const uint8Array = new Uint8Array(buffer);
+      let binary = '';
+      const chunkSize = 32768;
+      for (let i = 0; i < uint8Array.length; i += chunkSize) {
+        const chunk = uint8Array.slice(i, i + chunkSize);
+        binary += String.fromCharCode.apply(null, Array.from(chunk));
+      }
+      const base64 = btoa(binary);
+      return `data:image/png;base64,${base64}`;
+    };
+
+    // Parallel: fetch original image AND run ESRGAN upscale
+    const [imageResponse, esrganResult] = await Promise.all([
+      // Fetch original image
+      fetch(initialImageUrl),
+      // Run ESRGAN 6x upscale
+      (async () => {
+        try {
+          console.log('Starting ESRGAN 6x upscale...');
+          const esrganResponse = await fetch('https://fal.run/fal-ai/esrgan', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Key ${FAL_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              image_url: initialImageUrl,
+              scale: 6,
+            }),
+          });
+
+          if (!esrganResponse.ok) {
+            console.error('ESRGAN upscale failed:', esrganResponse.status);
+            return null;
+          }
+
+          const esrganData = await esrganResponse.json();
+          const esrganImageUrl = esrganData.image?.url;
+          
+          if (!esrganImageUrl) {
+            console.error('No ESRGAN image URL returned');
+            return null;
+          }
+
+          // Fetch the upscaled image
+          const esrganImageResponse = await fetch(esrganImageUrl);
+          if (!esrganImageResponse.ok) {
+            console.error('Failed to fetch ESRGAN image');
+            return null;
+          }
+
+          const esrganBuffer = await esrganImageResponse.arrayBuffer();
+          console.log('ESRGAN upscale complete!');
+          return arrayBufferToDataUrl(esrganBuffer);
+        } catch (err) {
+          console.error('ESRGAN upscale error:', err);
+          return null;
+        }
+      })()
+    ]);
+
     if (!imageResponse.ok) {
       throw new Error('Failed to fetch image');
     }
     
     const imageBuffer = await imageResponse.arrayBuffer();
-    const uint8Array = new Uint8Array(imageBuffer);
-    let binary = '';
-    const chunkSize = 32768;
-    for (let i = 0; i < uint8Array.length; i += chunkSize) {
-      const chunk = uint8Array.slice(i, i + chunkSize);
-      binary += String.fromCharCode.apply(null, Array.from(chunk));
-    }
-    const base64 = btoa(binary);
-    const dataUrl = `data:image/png;base64,${base64}`;
+    const dataUrl = arrayBufferToDataUrl(imageBuffer);
 
     console.log('Generation complete!');
 
@@ -210,6 +263,7 @@ ${sanitizedPrompt}`,
       JSON.stringify({ 
         success: true,
         imageUrl: dataUrl,
+        esrganImageUrl: esrganResult,
         message: 'Design generated successfully'
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

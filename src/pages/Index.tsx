@@ -8,9 +8,10 @@ const Index = () => {
   const {
     step,
     currentStepIndex,
-    previewUrl,
+    designs,
     generate,
-    download,
+    downloadStandard,
+    downloadEsrgan,
     isProcessing,
     getStepDescription,
     progress,
@@ -36,7 +37,7 @@ const Index = () => {
         <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-accent/10 rounded-full blur-[128px]" />
       </div>
 
-      <div className="relative z-10 container mx-auto px-4 py-8 max-w-6xl">
+      <div className="relative z-10 container mx-auto px-4 py-8 max-w-7xl">
         {/* Header */}
         <header className="text-center mb-12">
           <div className="inline-flex items-center justify-center gap-3 mb-4">
@@ -49,7 +50,7 @@ const Index = () => {
           </h1>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
             Create stunning print-on-demand t-shirt designs with AI. 
-            Get transparent PNGs at 4500×5400px resolution.
+            Get transparent PNGs at high resolution.
           </p>
         </header>
 
@@ -65,9 +66,9 @@ const Index = () => {
         )}
 
         {/* Main Content */}
-        <div className="grid lg:grid-cols-2 gap-8 items-start">
-          {/* Left: Input */}
-          <div className="space-y-6">
+        <div className="space-y-8">
+          {/* Input Section */}
+          <div className="grid lg:grid-cols-2 gap-8 items-start">
             <PromptInput onSubmit={generate} isLoading={isProcessing} />
             
             {/* Tips */}
@@ -85,16 +86,32 @@ const Index = () => {
             </div>
           </div>
 
-          {/* Right: Preview */}
-          <div>
+          {/* Preview Section - Two columns when complete */}
+          <div className="grid lg:grid-cols-2 gap-8">
+            {/* Standard Output */}
             <ImagePreview
-              imageUrl={previewUrl}
+              imageUrl={designs.standard?.previewUrl || null}
               isProcessing={isProcessing}
-              onDownload={download}
+              onDownload={downloadStandard}
               currentStepLabel={getCurrentStepLabel()}
               progress={progress}
               progressMessage={progressMessage}
-              title="Final Output (4500×5400)"
+              title="Standard (Client Upscale)"
+              dimensions="4500×5400px"
+              ratio="4:5 Ratio"
+            />
+
+            {/* ESRGAN Output */}
+            <ImagePreview
+              imageUrl={designs.esrgan?.previewUrl || null}
+              isProcessing={isProcessing}
+              onDownload={downloadEsrgan}
+              currentStepLabel={getCurrentStepLabel()}
+              progress={progress}
+              progressMessage={progressMessage}
+              title="ESRGAN (6x AI Upscale)"
+              dimensions="6144×9216px"
+              ratio="2:3 Ratio"
             />
           </div>
         </div>
