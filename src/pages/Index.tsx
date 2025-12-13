@@ -145,7 +145,7 @@ const Index = () => {
               ratio="AI Upscale"
             />
 
-            {/* Anime ESRGAN Output */}
+            {/* RealESRGAN x4plus Output */}
             <ImagePreview
               imageUrl={designs.anime?.previewUrl || null}
               isProcessing={isProcessing}
@@ -153,9 +153,9 @@ const Index = () => {
               currentStepLabel={getCurrentStepLabel()}
               progress={progress}
               progressMessage={progressMessage}
-              title="Anime ESRGAN"
+              title="RealESRGAN x4+"
               dimensions="4096×6144px"
-              ratio="Illustration Opt."
+              ratio="Detail Enhanced"
             />
 
             {/* Double Pass Output */}
