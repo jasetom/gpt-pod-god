@@ -12,6 +12,8 @@ const Index = () => {
     generate,
     downloadStandard,
     downloadEsrgan,
+    downloadAnime,
+    downloadDoublePass,
     isProcessing,
     getStepDescription,
     progress,
@@ -86,8 +88,8 @@ const Index = () => {
             </div>
           </div>
 
-          {/* Preview Section - Two columns when complete */}
-          <div className="grid lg:grid-cols-2 gap-6">
+          {/* Preview Section - Four columns when complete */}
+          <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
             {/* Standard Output */}
             <ImagePreview
               imageUrl={designs.standard?.previewUrl || null}
@@ -98,10 +100,10 @@ const Index = () => {
               progressMessage={progressMessage}
               title="Standard"
               dimensions="4500×5400px"
-              ratio="2:3 Ratio"
+              ratio="Client Upscale"
             />
 
-            {/* ESRGAN Output */}
+            {/* ESRGAN 8x Output */}
             <ImagePreview
               imageUrl={designs.esrgan?.previewUrl || null}
               isProcessing={isProcessing}
@@ -109,9 +111,35 @@ const Index = () => {
               currentStepLabel={getCurrentStepLabel()}
               progress={progress}
               progressMessage={progressMessage}
-              title="ESRGAN (8x)"
-              dimensions="4500×5400px"
-              ratio="2:3 Ratio"
+              title="ESRGAN 8x"
+              dimensions="8192×12288px"
+              ratio="AI Upscale"
+            />
+
+            {/* Anime ESRGAN Output */}
+            <ImagePreview
+              imageUrl={designs.anime?.previewUrl || null}
+              isProcessing={isProcessing}
+              onDownload={downloadAnime}
+              currentStepLabel={getCurrentStepLabel()}
+              progress={progress}
+              progressMessage={progressMessage}
+              title="Anime ESRGAN"
+              dimensions="4096×6144px"
+              ratio="Illustration Opt."
+            />
+
+            {/* Double Pass Output */}
+            <ImagePreview
+              imageUrl={designs.doublePass?.previewUrl || null}
+              isProcessing={isProcessing}
+              onDownload={downloadDoublePass}
+              currentStepLabel={getCurrentStepLabel()}
+              progress={progress}
+              progressMessage={progressMessage}
+              title="Double Pass"
+              dimensions="16384×24576px"
+              ratio="4x + 4x = 16x"
             />
           </div>
         </div>

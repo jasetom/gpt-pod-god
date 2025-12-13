@@ -37,12 +37,14 @@ const STEP_PROGRESS: Record<string, { start: number; end: number }> = {
 export type GeneratedDesigns = {
   standard: { previewUrl: string; blob: Blob } | null;
   esrgan: { previewUrl: string; blob: Blob } | null;
+  anime: { previewUrl: string; blob: Blob } | null;
+  doublePass: { previewUrl: string; blob: Blob } | null;
 };
 
 export function useDesignGenerator() {
   const [step, setStep] = useState<GenerationStep>('idle');
   const [currentStepIndex, setCurrentStepIndex] = useState(-1);
-  const [designs, setDesigns] = useState<GeneratedDesigns>({ standard: null, esrgan: null });
+  const [designs, setDesigns] = useState<GeneratedDesigns>({ standard: null, esrgan: null, anime: null, doublePass: null });
   const [prompt, setPrompt] = useState('');
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState('');
@@ -50,7 +52,7 @@ export function useDesignGenerator() {
   const reset = useCallback(() => {
     setStep('idle');
     setCurrentStepIndex(-1);
-    setDesigns({ standard: null, esrgan: null });
+    setDesigns({ standard: null, esrgan: null, anime: null, doublePass: null });
     setPrompt('');
     setProgress(0);
     setProgressMessage('');
@@ -60,7 +62,7 @@ export function useDesignGenerator() {
     // Full reset before starting new generation
     setStep('idle');
     setCurrentStepIndex(-1);
-    setDesigns({ standard: null, esrgan: null });
+    setDesigns({ standard: null, esrgan: null, anime: null, doublePass: null });
     setProgress(0);
     setProgressMessage('');
     
@@ -150,8 +152,8 @@ export function useDesignGenerator() {
       // Get original image blob first (needed for both standard and ESRGAN alpha)
       const originalBlob = base64ToBlob(data.imageUrl);
 
-      // Process all three images in parallel
-      const [standardResult, esrganResult] = await Promise.all([
+      // Process all images in parallel
+      const [standardResult, esrganResult, animeResult, doublePassResult] = await Promise.all([
         // Standard: client-side upscaling
         (async () => {
           const processedBlob = await resizeToTarget(originalBlob);
@@ -160,11 +162,11 @@ export function useDesignGenerator() {
             blob: processedBlob
           };
         })(),
-        // ESRGAN: fetch from URL and merge RGB with alpha from original
+        // ESRGAN 8x: fetch from URL and merge RGB with alpha from original
         (async () => {
           if (!data.esrganImageUrl) return null;
           try {
-            console.log('Fetching ESRGAN image from URL...');
+            console.log('Fetching ESRGAN 8x image from URL...');
             const esrganResponse = await fetch(data.esrganImageUrl);
             if (!esrganResponse.ok) {
               console.error('Failed to fetch ESRGAN image');
@@ -172,7 +174,6 @@ export function useDesignGenerator() {
             }
             const esrganBlob = await esrganResponse.blob();
             console.log('Processing ESRGAN with alpha preservation...');
-            // Use ESRGAN RGB with alpha from original for transparency preservation
             const processedBlob = await processEsrganWithAlpha(originalBlob, esrganBlob);
             return {
               previewUrl: URL.createObjectURL(processedBlob),
@@ -180,6 +181,50 @@ export function useDesignGenerator() {
             };
           } catch (err) {
             console.error('Failed to process ESRGAN image:', err);
+            return null;
+          }
+        })(),
+        // Anime ESRGAN: fetch from URL and merge RGB with alpha from original
+        (async () => {
+          if (!data.animeEsrganImageUrl) return null;
+          try {
+            console.log('Fetching Anime ESRGAN image from URL...');
+            const animeResponse = await fetch(data.animeEsrganImageUrl);
+            if (!animeResponse.ok) {
+              console.error('Failed to fetch Anime ESRGAN image');
+              return null;
+            }
+            const animeBlob = await animeResponse.blob();
+            console.log('Processing Anime ESRGAN with alpha preservation...');
+            const processedBlob = await processEsrganWithAlpha(originalBlob, animeBlob);
+            return {
+              previewUrl: URL.createObjectURL(processedBlob),
+              blob: processedBlob
+            };
+          } catch (err) {
+            console.error('Failed to process Anime ESRGAN image:', err);
+            return null;
+          }
+        })(),
+        // Double Pass ESRGAN: fetch from URL and merge RGB with alpha from original
+        (async () => {
+          if (!data.doublePassImageUrl) return null;
+          try {
+            console.log('Fetching Double Pass ESRGAN image from URL...');
+            const doublePassResponse = await fetch(data.doublePassImageUrl);
+            if (!doublePassResponse.ok) {
+              console.error('Failed to fetch Double Pass ESRGAN image');
+              return null;
+            }
+            const doublePassBlob = await doublePassResponse.blob();
+            console.log('Processing Double Pass ESRGAN with alpha preservation...');
+            const processedBlob = await processEsrganWithAlpha(originalBlob, doublePassBlob);
+            return {
+              previewUrl: URL.createObjectURL(processedBlob),
+              blob: processedBlob
+            };
+          } catch (err) {
+            console.error('Failed to process Double Pass ESRGAN image:', err);
             return null;
           }
         })()
@@ -190,7 +235,9 @@ export function useDesignGenerator() {
       
       setDesigns({
         standard: standardResult,
-        esrgan: esrganResult
+        esrgan: esrganResult,
+        anime: animeResult,
+        doublePass: doublePassResult
       });
 
       // Complete
@@ -222,11 +269,29 @@ export function useDesignGenerator() {
   const downloadEsrgan = useCallback(() => {
     if (designs.esrgan?.blob) {
       const timestamp = Date.now();
-      const filename = `pod-design-esrgan-${timestamp}.png`;
+      const filename = `pod-design-esrgan-8x-${timestamp}.png`;
       downloadImage(designs.esrgan.blob, filename);
-      toast.success('ESRGAN design downloaded!');
+      toast.success('ESRGAN 8x design downloaded!');
     }
   }, [designs.esrgan]);
+
+  const downloadAnime = useCallback(() => {
+    if (designs.anime?.blob) {
+      const timestamp = Date.now();
+      const filename = `pod-design-anime-esrgan-${timestamp}.png`;
+      downloadImage(designs.anime.blob, filename);
+      toast.success('Anime ESRGAN design downloaded!');
+    }
+  }, [designs.anime]);
+
+  const downloadDoublePass = useCallback(() => {
+    if (designs.doublePass?.blob) {
+      const timestamp = Date.now();
+      const filename = `pod-design-double-pass-${timestamp}.png`;
+      downloadImage(designs.doublePass.blob, filename);
+      toast.success('Double Pass design downloaded!');
+    }
+  }, [designs.doublePass]);
 
   const getStepDescription = useCallback(() => {
     if (currentStepIndex >= 0 && currentStepIndex < STEPS.length) {
@@ -245,6 +310,8 @@ export function useDesignGenerator() {
     generate,
     downloadStandard,
     downloadEsrgan,
+    downloadAnime,
+    downloadDoublePass,
     reset,
     getStepDescription,
     isProcessing: step !== 'idle' && step !== 'complete' && step !== 'error',
