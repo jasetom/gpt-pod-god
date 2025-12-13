@@ -1,8 +1,9 @@
-import { Shirt } from "lucide-react";
+import { Shirt, RefreshCw, AlertCircle } from "lucide-react";
 import { PromptInput } from "@/components/PromptInput";
 import { ProgressStepper, Step } from "@/components/ProgressStepper";
 import { ImagePreview } from "@/components/ImagePreview";
 import { useDesignGenerator, STEPS } from "@/hooks/useDesignGenerator";
+import { Button } from "@/components/ui/button";
 
 const Index = () => {
   const {
@@ -18,6 +19,8 @@ const Index = () => {
     getStepDescription,
     progress,
     progressMessage,
+    prompt,
+    reset,
   } = useDesignGenerator();
 
   const getStatus = () => {
@@ -55,6 +58,32 @@ const Index = () => {
             Get transparent PNGs at high resolution.
           </p>
         </header>
+
+        {/* Error State with Retry Button */}
+        {step === 'error' && (
+          <div className="mb-8 glass-card rounded-2xl p-6 border-destructive/50">
+            <div className="flex flex-col items-center gap-4 text-center">
+              <div className="p-3 rounded-full bg-destructive/20">
+                <AlertCircle className="h-6 w-6 text-destructive" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-foreground mb-1">Generation Failed</h3>
+                <p className="text-sm text-muted-foreground">Something went wrong. Please try again.</p>
+              </div>
+              <div className="flex gap-3">
+                {prompt && (
+                  <Button onClick={() => generate(prompt)} variant="default" className="gap-2">
+                    <RefreshCw className="h-4 w-4" />
+                    Retry
+                  </Button>
+                )}
+                <Button onClick={reset} variant="outline">
+                  Start Over
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Progress Stepper - Only show when processing */}
         {(isProcessing || step === 'complete') && (
