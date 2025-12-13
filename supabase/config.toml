@@ -1,1 +1,4 @@
 project_id = "arfhoyubozluzszenypo"
+
+[functions.generate-design]
+verify_jwt = false
