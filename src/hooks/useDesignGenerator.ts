@@ -34,11 +34,15 @@ const STEP_PROGRESS: Record<string, { start: number; end: number }> = {
   finalizing: { start: 95, end: 100 },
 };
 
+export type GeneratedDesigns = {
+  standard: { previewUrl: string; blob: Blob } | null;
+  esrgan: { previewUrl: string; blob: Blob } | null;
+};
+
 export function useDesignGenerator() {
   const [step, setStep] = useState<GenerationStep>('idle');
   const [currentStepIndex, setCurrentStepIndex] = useState(-1);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [finalBlob, setFinalBlob] = useState<Blob | null>(null);
+  const [designs, setDesigns] = useState<GeneratedDesigns>({ standard: null, esrgan: null });
   const [prompt, setPrompt] = useState('');
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState('');
@@ -46,8 +50,7 @@ export function useDesignGenerator() {
   const reset = useCallback(() => {
     setStep('idle');
     setCurrentStepIndex(-1);
-    setPreviewUrl(null);
-    setFinalBlob(null);
+    setDesigns({ standard: null, esrgan: null });
     setPrompt('');
     setProgress(0);
     setProgressMessage('');
@@ -57,8 +60,7 @@ export function useDesignGenerator() {
     // Full reset before starting new generation
     setStep('idle');
     setCurrentStepIndex(-1);
-    setPreviewUrl(null);
-    setFinalBlob(null);
+    setDesigns({ standard: null, esrgan: null });
     setProgress(0);
     setProgressMessage('');
     
@@ -134,33 +136,58 @@ export function useDesignGenerator() {
       setStep('upscaling');
       setCurrentStepIndex(2);
 
-      // Convert base64 to blob
-      const base64Data = data.imageUrl.split(',')[1];
-      const binaryData = atob(base64Data);
-      const bytes = new Uint8Array(binaryData.length);
-      for (let i = 0; i < binaryData.length; i++) {
-        bytes[i] = binaryData.charCodeAt(i);
-      }
-      const imageBlob = new Blob([bytes], { type: 'image/png' });
+      // Helper to convert base64 to blob
+      const base64ToBlob = (dataUrl: string): Blob => {
+        const base64Data = dataUrl.split(',')[1];
+        const binaryData = atob(base64Data);
+        const bytes = new Uint8Array(binaryData.length);
+        for (let i = 0; i < binaryData.length; i++) {
+          bytes[i] = binaryData.charCodeAt(i);
+        }
+        return new Blob([bytes], { type: 'image/png' });
+      };
 
-      setProgress(82);
-      setProgressMessage('Preparing high-resolution output...');
+      // Process both images in parallel
+      const [standardResult, esrganResult] = await Promise.all([
+        // Standard: client-side upscaling
+        (async () => {
+          const imageBlob = base64ToBlob(data.imageUrl);
+          const processedBlob = await resizeToTarget(imageBlob);
+          return {
+            previewUrl: URL.createObjectURL(processedBlob),
+            blob: processedBlob
+          };
+        })(),
+        // ESRGAN: already upscaled from server, just convert to blob
+        (async () => {
+          if (!data.esrganImageUrl) return null;
+          try {
+            const esrganBlob = base64ToBlob(data.esrganImageUrl);
+            return {
+              previewUrl: URL.createObjectURL(esrganBlob),
+              blob: esrganBlob
+            };
+          } catch (err) {
+            console.error('Failed to process ESRGAN image:', err);
+            return null;
+          }
+        })()
+      ]);
 
-      // Resize to target dimensions
-      const processedBlob = await resizeToTarget(imageBlob);
-      
       setProgress(95);
       setProgressMessage('Almost done...');
       
-      setPreviewUrl(URL.createObjectURL(processedBlob));
-      setFinalBlob(processedBlob);
+      setDesigns({
+        standard: standardResult,
+        esrgan: esrganResult
+      });
 
       // Complete
       setStep('complete');
       setCurrentStepIndex(3);
       setProgress(100);
       setProgressMessage('Done!');
-      toast.success('Your design is ready!');
+      toast.success('Your designs are ready!');
 
     } catch (error) {
       if (progressInterval) clearInterval(progressInterval);
@@ -172,15 +199,23 @@ export function useDesignGenerator() {
     }
   }, []);
 
-  const download = useCallback(() => {
-    if (finalBlob) {
+  const downloadStandard = useCallback(() => {
+    if (designs.standard?.blob) {
       const timestamp = Date.now();
-      const filename = `pod-design-${timestamp}.png`;
-      downloadImage(finalBlob, filename);
-      toast.success('Download started!');
+      const filename = `pod-design-standard-${timestamp}.png`;
+      downloadImage(designs.standard.blob, filename);
+      toast.success('Standard design downloaded!');
     }
-  }, [finalBlob]);
+  }, [designs.standard]);
 
+  const downloadEsrgan = useCallback(() => {
+    if (designs.esrgan?.blob) {
+      const timestamp = Date.now();
+      const filename = `pod-design-esrgan-${timestamp}.png`;
+      downloadImage(designs.esrgan.blob, filename);
+      toast.success('ESRGAN design downloaded!');
+    }
+  }, [designs.esrgan]);
 
   const getStepDescription = useCallback(() => {
     if (currentStepIndex >= 0 && currentStepIndex < STEPS.length) {
@@ -192,13 +227,13 @@ export function useDesignGenerator() {
   return {
     step,
     currentStepIndex,
-    previewUrl,
-    finalBlob,
+    designs,
     prompt,
     progress,
     progressMessage,
     generate,
-    download,
+    downloadStandard,
+    downloadEsrgan,
     reset,
     getStepDescription,
     isProcessing: step !== 'idle' && step !== 'complete' && step !== 'error',
