@@ -200,8 +200,8 @@ ${sanitizedPrompt}`,
       return `data:image/png;base64,${base64}`;
     };
 
-    // Parallel: fetch original image AND run all ESRGAN upscale variants
-    const [imageResponse, esrganImageUrl, animeEsrganImageUrl, doublePassImageUrl] = await Promise.all([
+    // Parallel: fetch original image AND run all upscale variants
+    const [imageResponse, esrganImageUrl, animeEsrganImageUrl, doublePassImageUrl, seedvrImageUrl] = await Promise.all([
       // Fetch original image
       fetch(initialImageUrl),
       
@@ -345,6 +345,44 @@ ${sanitizedPrompt}`,
           console.error('Double Pass ESRGAN error:', err);
           return null;
         }
+      })(),
+      
+      // SeedVR 3x upscale - high quality AI upscaler
+      (async () => {
+        try {
+          console.log('Starting SeedVR 3x upscale...');
+          const seedvrResponse = await fetch('https://fal.run/fal-ai/seedvr/upscale/image', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Key ${FAL_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              image_url: initialImageUrl,
+              upscale_factor: 3,
+              seed: 9000,
+            }),
+          });
+
+          if (!seedvrResponse.ok) {
+            console.error('SeedVR upscale failed:', seedvrResponse.status);
+            return null;
+          }
+
+          const seedvrData = await seedvrResponse.json();
+          const url = seedvrData.image?.url;
+          
+          if (!url) {
+            console.error('No SeedVR image URL returned');
+            return null;
+          }
+
+          console.log('SeedVR 3x upscale complete!');
+          return url;
+        } catch (err) {
+          console.error('SeedVR upscale error:', err);
+          return null;
+        }
       })()
     ]);
 
@@ -364,6 +402,7 @@ ${sanitizedPrompt}`,
         esrganImageUrl: esrganImageUrl,
         animeEsrganImageUrl: animeEsrganImageUrl,
         doublePassImageUrl: doublePassImageUrl,
+        seedvrImageUrl: seedvrImageUrl,
         message: 'Design generated successfully'
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

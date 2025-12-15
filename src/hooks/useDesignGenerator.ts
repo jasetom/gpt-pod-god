@@ -39,12 +39,13 @@ export type GeneratedDesigns = {
   esrgan: { previewUrl: string; blob: Blob } | null;
   anime: { previewUrl: string; blob: Blob } | null;
   doublePass: { previewUrl: string; blob: Blob } | null;
+  seedvr: { previewUrl: string; blob: Blob } | null;
 };
 
 export function useDesignGenerator() {
   const [step, setStep] = useState<GenerationStep>('idle');
   const [currentStepIndex, setCurrentStepIndex] = useState(-1);
-  const [designs, setDesigns] = useState<GeneratedDesigns>({ standard: null, esrgan: null, anime: null, doublePass: null });
+  const [designs, setDesigns] = useState<GeneratedDesigns>({ standard: null, esrgan: null, anime: null, doublePass: null, seedvr: null });
   const [prompt, setPrompt] = useState('');
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState('');
@@ -52,7 +53,7 @@ export function useDesignGenerator() {
   const reset = useCallback(() => {
     setStep('idle');
     setCurrentStepIndex(-1);
-    setDesigns({ standard: null, esrgan: null, anime: null, doublePass: null });
+    setDesigns({ standard: null, esrgan: null, anime: null, doublePass: null, seedvr: null });
     setPrompt('');
     setProgress(0);
     setProgressMessage('');
@@ -62,7 +63,7 @@ export function useDesignGenerator() {
     // Full reset before starting new generation
     setStep('idle');
     setCurrentStepIndex(-1);
-    setDesigns({ standard: null, esrgan: null, anime: null, doublePass: null });
+    setDesigns({ standard: null, esrgan: null, anime: null, doublePass: null, seedvr: null });
     setProgress(0);
     setProgressMessage('');
     
@@ -153,7 +154,7 @@ export function useDesignGenerator() {
       const originalBlob = base64ToBlob(data.imageUrl);
 
       // Process all images in parallel
-      const [standardResult, esrganResult, animeResult, doublePassResult] = await Promise.all([
+      const [standardResult, esrganResult, animeResult, doublePassResult, seedvrResult] = await Promise.all([
         // Standard: client-side upscaling
         (async () => {
           const processedBlob = await resizeToTarget(originalBlob);
@@ -227,6 +228,28 @@ export function useDesignGenerator() {
             console.error('Failed to process Double Pass ESRGAN image:', err);
             return null;
           }
+        })(),
+        // SeedVR: fetch from URL and merge RGB with alpha from original
+        (async () => {
+          if (!data.seedvrImageUrl) return null;
+          try {
+            console.log('Fetching SeedVR image from URL...');
+            const seedvrResponse = await fetch(data.seedvrImageUrl);
+            if (!seedvrResponse.ok) {
+              console.error('Failed to fetch SeedVR image');
+              return null;
+            }
+            const seedvrBlob = await seedvrResponse.blob();
+            console.log('Processing SeedVR with alpha preservation...');
+            const processedBlob = await processEsrganWithAlpha(originalBlob, seedvrBlob);
+            return {
+              previewUrl: URL.createObjectURL(processedBlob),
+              blob: processedBlob
+            };
+          } catch (err) {
+            console.error('Failed to process SeedVR image:', err);
+            return null;
+          }
         })()
       ]);
       
@@ -237,7 +260,8 @@ export function useDesignGenerator() {
         standard: standardResult,
         esrgan: esrganResult,
         anime: animeResult,
-        doublePass: doublePassResult
+        doublePass: doublePassResult,
+        seedvr: seedvrResult
       });
 
       // Complete
@@ -293,6 +317,15 @@ export function useDesignGenerator() {
     }
   }, [designs.doublePass]);
 
+  const downloadSeedvr = useCallback(() => {
+    if (designs.seedvr?.blob) {
+      const timestamp = Date.now();
+      const filename = `pod-design-seedvr-${timestamp}.png`;
+      downloadImage(designs.seedvr.blob, filename);
+      toast.success('SeedVR design downloaded!');
+    }
+  }, [designs.seedvr]);
+
   const getStepDescription = useCallback(() => {
     if (currentStepIndex >= 0 && currentStepIndex < STEPS.length) {
       return STEPS[currentStepIndex].description;
@@ -312,6 +345,7 @@ export function useDesignGenerator() {
     downloadEsrgan,
     downloadAnime,
     downloadDoublePass,
+    downloadSeedvr,
     reset,
     getStepDescription,
     isProcessing: step !== 'idle' && step !== 'complete' && step !== 'error',
