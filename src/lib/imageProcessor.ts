@@ -169,21 +169,21 @@ export async function resizeToTarget(imageBlob: Blob): Promise<Blob> {
 }
 
 /**
- * Process ESRGAN image by merging its RGB with upscaled alpha from original
- * This preserves transparency while getting ESRGAN quality for RGB data
+ * Process ESRGAN image by merging its enhanced details with original colors and alpha
+ * ESRGAN provides sharper edges, original provides color accuracy and transparency
  */
 export async function processEsrganWithAlpha(
   originalBlob: Blob, 
   esrganBlob: Blob
 ): Promise<Blob> {
-  console.log('Processing ESRGAN with alpha channel preservation...');
+  console.log('Processing ESRGAN with color and alpha preservation...');
   
   const [originalImg, esrganImg] = await Promise.all([
     loadImage(originalBlob),
     loadImage(esrganBlob)
   ]);
 
-  // Create canvas for original (to extract alpha)
+  // Create canvas for original (to extract colors and alpha)
   const originalCanvas = document.createElement('canvas');
   originalCanvas.width = originalImg.naturalWidth;
   originalCanvas.height = originalImg.naturalHeight;
@@ -225,25 +225,25 @@ export async function processEsrganWithAlpha(
   const scaledW = Math.round(finalContentWidth);
   const scaledH = Math.round(finalContentHeight);
 
-  // Step 1: Extract and upscale alpha channel from original
-  console.log('Extracting and upscaling alpha channel...');
-  const alphaCanvas = multiStepUpscale(
+  // Step 1: Upscale original (preserves colors and alpha)
+  console.log('Upscaling original with colors and alpha...');
+  const originalUpscaledCanvas = multiStepUpscale(
     originalCanvas,
     cropLeft, cropTop, contentWidth, contentHeight,
     scaledW, scaledH
   );
-  const alphaCtx = alphaCanvas.getContext('2d', { willReadFrequently: true })!;
-  const alphaData = alphaCtx.getImageData(0, 0, scaledW, scaledH);
+  const originalUpscaledCtx = originalUpscaledCanvas.getContext('2d', { willReadFrequently: true })!;
+  const originalUpscaledData = originalUpscaledCtx.getImageData(0, 0, scaledW, scaledH);
   
   // Step 2: Create canvas for ESRGAN and scale to same dimensions
-  console.log('Processing ESRGAN RGB...');
+  console.log('Processing ESRGAN for edge enhancement...');
   const esrganCanvas = document.createElement('canvas');
   esrganCanvas.width = esrganImg.naturalWidth;
   esrganCanvas.height = esrganImg.naturalHeight;
   const esrganCtx = esrganCanvas.getContext('2d', { willReadFrequently: true })!;
   esrganCtx.drawImage(esrganImg, 0, 0);
   
-  // ESRGAN is already 6x upscaled, we need to find equivalent crop region
+  // ESRGAN is upscaled, we need to find equivalent crop region
   const esrganScale = esrganImg.naturalWidth / originalImg.naturalWidth;
   const esrganCropLeft = Math.round(cropLeft * esrganScale);
   const esrganCropTop = Math.round(cropTop * esrganScale);
@@ -265,23 +265,48 @@ export async function processEsrganWithAlpha(
   
   const esrganData = scaledEsrganCtx.getImageData(0, 0, scaledW, scaledH);
   
-  // Step 3: Merge ESRGAN RGB with original alpha
-  console.log('Merging RGB and alpha channels...');
+  // Step 3: Blend ESRGAN sharpness with original colors
+  // Use original RGB colors but apply subtle luminance sharpening from ESRGAN
+  console.log('Blending colors with enhanced edges...');
   const mergedData = scaledEsrganCtx.createImageData(scaledW, scaledH);
-  for (let i = 0; i < esrganData.data.length; i += 4) {
-    // RGB from ESRGAN
-    mergedData.data[i] = esrganData.data[i];
-    mergedData.data[i + 1] = esrganData.data[i + 1];
-    mergedData.data[i + 2] = esrganData.data[i + 2];
-    // Alpha from original (upscaled)
-    mergedData.data[i + 3] = alphaData.data[i + 3];
+  
+  for (let i = 0; i < originalUpscaledData.data.length; i += 4) {
+    const alpha = originalUpscaledData.data[i + 3];
     
-    // Clean near-transparent pixels
-    if (mergedData.data[i + 3] < 10) {
+    if (alpha < 10) {
+      // Fully transparent - keep as transparent
       mergedData.data[i] = 0;
       mergedData.data[i + 1] = 0;
       mergedData.data[i + 2] = 0;
       mergedData.data[i + 3] = 0;
+    } else {
+      // Get original and ESRGAN luminance
+      const origR = originalUpscaledData.data[i];
+      const origG = originalUpscaledData.data[i + 1];
+      const origB = originalUpscaledData.data[i + 2];
+      
+      const esrganR = esrganData.data[i];
+      const esrganG = esrganData.data[i + 1];
+      const esrganB = esrganData.data[i + 2];
+      
+      // Calculate luminance for both
+      const origLum = 0.299 * origR + 0.587 * origG + 0.114 * origB;
+      const esrganLum = 0.299 * esrganR + 0.587 * esrganG + 0.114 * esrganB;
+      
+      // Calculate luminance adjustment factor (how much ESRGAN sharpened the edges)
+      // Apply only subtle enhancement to preserve original colors
+      const lumRatio = origLum > 0 ? esrganLum / origLum : 1;
+      const blendFactor = 0.15; // Only 15% influence from ESRGAN luminance
+      const adjustedRatio = 1 + (lumRatio - 1) * blendFactor;
+      
+      // Clamp the ratio to prevent extreme changes
+      const clampedRatio = Math.max(0.85, Math.min(1.15, adjustedRatio));
+      
+      // Apply subtle luminance adjustment while keeping original colors
+      mergedData.data[i] = Math.max(0, Math.min(255, Math.round(origR * clampedRatio)));
+      mergedData.data[i + 1] = Math.max(0, Math.min(255, Math.round(origG * clampedRatio)));
+      mergedData.data[i + 2] = Math.max(0, Math.min(255, Math.round(origB * clampedRatio)));
+      mergedData.data[i + 3] = alpha;
     }
   }
   
@@ -303,7 +328,7 @@ export async function processEsrganWithAlpha(
   
   finalCtx.drawImage(mergedCanvas, offsetX, offsetY);
   
-  console.log('ESRGAN with alpha processing complete!');
+  console.log('ESRGAN with color preservation complete!');
   return canvasToBlob(finalCanvas);
 }
 
