@@ -81,12 +81,9 @@ function cleanEdges(canvas: HTMLCanvasElement): void {
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const { data } = imageData;
   
-  // Only zero out RGB for pixels that are nearly transparent (anti-aliasing cleanup)
-  // This prevents colored fringe but preserves the design
   for (let i = 0; i < data.length; i += 4) {
     const alpha = data[i + 3];
     if (alpha < 10) {
-      // Nearly transparent - zero out color to prevent any color bleeding
       data[i] = 0;
       data[i + 1] = 0;
       data[i + 2] = 0;
@@ -98,103 +95,13 @@ function cleanEdges(canvas: HTMLCanvasElement): void {
 }
 
 /**
- * Resize image to target dimensions with multi-step upscaling for quality
+ * Helper: Calculate crop bounds and target dimensions from original image
  */
-export async function resizeToTarget(imageBlob: Blob): Promise<Blob> {
-  console.log('Processing image to target canvas:', TARGET_WIDTH, 'x', TARGET_HEIGHT);
-
-  const img = await loadImage(imageBlob);
-  
-  // Find content bounds (non-transparent pixels)
-  const tempCanvas = document.createElement('canvas');
-  tempCanvas.width = img.naturalWidth;
-  tempCanvas.height = img.naturalHeight;
-  const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true })!;
-  tempCtx.drawImage(img, 0, 0);
-  
-  const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-  const bounds = findContentBounds(imageData);
-
-  // Crop to content with padding to avoid cutting off edges
-  const padding = Math.round(Math.max(img.naturalWidth, img.naturalHeight) * 0.025);
-  const cropLeft = Math.max(0, bounds.left - padding);
-  const cropTop = Math.max(0, bounds.top - padding);
-  const cropRight = Math.min(tempCanvas.width - 1, bounds.right + padding);
-  const cropBottom = Math.min(tempCanvas.height - 1, bounds.bottom + padding);
-  
-  const contentWidth = cropRight - cropLeft + 1;
-  const contentHeight = cropBottom - cropTop + 1;
-
-  // Calculate target size to fit within fill ratio
-  const maxContentWidth = TARGET_WIDTH * DESIGN_FILL_RATIO;
-  const maxContentHeight = TARGET_HEIGHT * DESIGN_FILL_RATIO;
-  
-  const contentRatio = contentWidth / contentHeight;
-  const targetRatio = maxContentWidth / maxContentHeight;
-  
-  let finalContentWidth: number;
-  let finalContentHeight: number;
-  
-  if (contentRatio > targetRatio) {
-    finalContentWidth = maxContentWidth;
-    finalContentHeight = maxContentWidth / contentRatio;
-  } else {
-    finalContentHeight = maxContentHeight;
-    finalContentWidth = maxContentHeight * contentRatio;
-  }
-
-  // Multi-step upscale for better quality
-  const scaledCanvas = multiStepUpscale(
-    tempCanvas,
-    cropLeft, cropTop, contentWidth, contentHeight,
-    Math.round(finalContentWidth), Math.round(finalContentHeight)
-  );
-  
-  // Clean up edge transparency
-  cleanEdges(scaledCanvas);
-
-  // Create final canvas and center the content
-  const finalCanvas = document.createElement('canvas');
-  finalCanvas.width = TARGET_WIDTH;
-  finalCanvas.height = TARGET_HEIGHT;
-  const finalCtx = finalCanvas.getContext('2d')!;
-  finalCtx.clearRect(0, 0, TARGET_WIDTH, TARGET_HEIGHT);
-
-  const offsetX = Math.round((TARGET_WIDTH - scaledCanvas.width) / 2);
-  const offsetY = Math.round((TARGET_HEIGHT - scaledCanvas.height) / 2);
-
-  finalCtx.drawImage(scaledCanvas, offsetX, offsetY);
-
-  return canvasToBlob(finalCanvas);
-}
-
-/**
- * Process ESRGAN image by merging its enhanced details with original colors and alpha
- * ESRGAN provides sharper edges, original provides color accuracy and transparency
- */
-export async function processEsrganWithAlpha(
-  originalBlob: Blob, 
-  esrganBlob: Blob
-): Promise<Blob> {
-  console.log('Processing ESRGAN with color and alpha preservation...');
-  
-  const [originalImg, esrganImg] = await Promise.all([
-    loadImage(originalBlob),
-    loadImage(esrganBlob)
-  ]);
-
-  // Create canvas for original (to extract colors and alpha)
-  const originalCanvas = document.createElement('canvas');
-  originalCanvas.width = originalImg.naturalWidth;
-  originalCanvas.height = originalImg.naturalHeight;
+function calculateCropAndTarget(originalImg: HTMLImageElement, originalCanvas: HTMLCanvasElement) {
   const originalCtx = originalCanvas.getContext('2d', { willReadFrequently: true })!;
-  originalCtx.drawImage(originalImg, 0, 0);
-  
-  // Find content bounds from original
   const originalData = originalCtx.getImageData(0, 0, originalCanvas.width, originalCanvas.height);
   const bounds = findContentBounds(originalData);
   
-  // Crop settings
   const padding = Math.round(Math.max(originalImg.naturalWidth, originalImg.naturalHeight) * 0.025);
   const cropLeft = Math.max(0, bounds.left - padding);
   const cropTop = Math.max(0, bounds.top - padding);
@@ -204,7 +111,6 @@ export async function processEsrganWithAlpha(
   const contentWidth = cropRight - cropLeft + 1;
   const contentHeight = cropBottom - cropTop + 1;
 
-  // Calculate target size
   const maxContentWidth = TARGET_WIDTH * DESIGN_FILL_RATIO;
   const maxContentHeight = TARGET_HEIGHT * DESIGN_FILL_RATIO;
   
@@ -222,35 +128,108 @@ export async function processEsrganWithAlpha(
     finalContentWidth = maxContentHeight * contentRatio;
   }
   
-  const scaledW = Math.round(finalContentWidth);
-  const scaledH = Math.round(finalContentHeight);
+  return {
+    cropLeft,
+    cropTop,
+    contentWidth,
+    contentHeight,
+    scaledW: Math.round(finalContentWidth),
+    scaledH: Math.round(finalContentHeight)
+  };
+}
 
-  // Step 1: Upscale original (preserves colors and alpha)
-  console.log('Upscaling original with colors and alpha...');
-  const originalUpscaledCanvas = multiStepUpscale(
-    originalCanvas,
+/**
+ * Helper: Center content on final canvas
+ */
+function centerOnFinalCanvas(contentCanvas: HTMLCanvasElement): HTMLCanvasElement {
+  const finalCanvas = document.createElement('canvas');
+  finalCanvas.width = TARGET_WIDTH;
+  finalCanvas.height = TARGET_HEIGHT;
+  const finalCtx = finalCanvas.getContext('2d')!;
+  finalCtx.clearRect(0, 0, TARGET_WIDTH, TARGET_HEIGHT);
+  
+  const offsetX = Math.round((TARGET_WIDTH - contentCanvas.width) / 2);
+  const offsetY = Math.round((TARGET_HEIGHT - contentCanvas.height) / 2);
+  
+  finalCtx.drawImage(contentCanvas, offsetX, offsetY);
+  return finalCanvas;
+}
+
+/**
+ * Standard: Client-side canvas upscaling only
+ * Uses multi-step 2x upscaling for quality
+ */
+export async function resizeToTarget(imageBlob: Blob): Promise<Blob> {
+  console.log('[Standard] Processing with client canvas upscaling...');
+
+  const img = await loadImage(imageBlob);
+  
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = img.naturalWidth;
+  tempCanvas.height = img.naturalHeight;
+  const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true })!;
+  tempCtx.drawImage(img, 0, 0);
+  
+  const { cropLeft, cropTop, contentWidth, contentHeight, scaledW, scaledH } = 
+    calculateCropAndTarget(img, tempCanvas);
+
+  const scaledCanvas = multiStepUpscale(
+    tempCanvas,
     cropLeft, cropTop, contentWidth, contentHeight,
     scaledW, scaledH
+  );
+  
+  cleanEdges(scaledCanvas);
+  const finalCanvas = centerOnFinalCanvas(scaledCanvas);
+
+  console.log('[Standard] Complete: 1024×1536 → 4500×5400');
+  return canvasToBlob(finalCanvas);
+}
+
+/**
+ * ESRGAN 8x: Uses fal-ai/esrgan with scale=8
+ * Takes RGB from ESRGAN (8192×12288), alpha from original
+ */
+export async function processEsrgan8x(
+  originalBlob: Blob, 
+  esrgan8xBlob: Blob
+): Promise<Blob> {
+  console.log('[ESRGAN 8x] Processing fal-ai/esrgan scale=8...');
+  
+  const [originalImg, esrganImg] = await Promise.all([
+    loadImage(originalBlob),
+    loadImage(esrgan8xBlob)
+  ]);
+
+  const originalCanvas = document.createElement('canvas');
+  originalCanvas.width = originalImg.naturalWidth;
+  originalCanvas.height = originalImg.naturalHeight;
+  const originalCtx = originalCanvas.getContext('2d', { willReadFrequently: true })!;
+  originalCtx.drawImage(originalImg, 0, 0);
+  
+  const { cropLeft, cropTop, contentWidth, contentHeight, scaledW, scaledH } = 
+    calculateCropAndTarget(originalImg, originalCanvas);
+
+  // Upscale original for colors and alpha
+  const originalUpscaledCanvas = multiStepUpscale(
+    originalCanvas, cropLeft, cropTop, contentWidth, contentHeight, scaledW, scaledH
   );
   const originalUpscaledCtx = originalUpscaledCanvas.getContext('2d', { willReadFrequently: true })!;
   const originalUpscaledData = originalUpscaledCtx.getImageData(0, 0, scaledW, scaledH);
   
-  // Step 2: Create canvas for ESRGAN and scale to same dimensions
-  console.log('Processing ESRGAN for edge enhancement...');
+  // Process ESRGAN 8x image (8192×12288)
   const esrganCanvas = document.createElement('canvas');
   esrganCanvas.width = esrganImg.naturalWidth;
   esrganCanvas.height = esrganImg.naturalHeight;
   const esrganCtx = esrganCanvas.getContext('2d', { willReadFrequently: true })!;
   esrganCtx.drawImage(esrganImg, 0, 0);
   
-  // ESRGAN is upscaled, we need to find equivalent crop region
-  const esrganScale = esrganImg.naturalWidth / originalImg.naturalWidth;
+  const esrganScale = esrganImg.naturalWidth / originalImg.naturalWidth; // Should be 8
   const esrganCropLeft = Math.round(cropLeft * esrganScale);
   const esrganCropTop = Math.round(cropTop * esrganScale);
   const esrganCropWidth = Math.round(contentWidth * esrganScale);
   const esrganCropHeight = Math.round(contentHeight * esrganScale);
   
-  // Scale ESRGAN to match our target dimensions
   const scaledEsrganCanvas = document.createElement('canvas');
   scaledEsrganCanvas.width = scaledW;
   scaledEsrganCanvas.height = scaledH;
@@ -265,16 +244,12 @@ export async function processEsrganWithAlpha(
   
   const esrganData = scaledEsrganCtx.getImageData(0, 0, scaledW, scaledH);
   
-  // Step 3: Blend ESRGAN sharpness with original colors
-  // Use original RGB colors but apply subtle luminance sharpening from ESRGAN
-  console.log('Blending colors with enhanced edges...');
+  // Merge: Original colors with subtle ESRGAN enhancement, original alpha
   const mergedData = scaledEsrganCtx.createImageData(scaledW, scaledH);
-  
   for (let i = 0; i < originalUpscaledData.data.length; i += 4) {
     const alpha = originalUpscaledData.data[i + 3];
     
     if (alpha < 10) {
-      // Fully transparent - keep as transparent
       mergedData.data[i] = 0;
       mergedData.data[i + 1] = 0;
       mergedData.data[i + 2] = 0;
@@ -284,28 +259,18 @@ export async function processEsrganWithAlpha(
       const origR = originalUpscaledData.data[i];
       const origG = originalUpscaledData.data[i + 1];
       const origB = originalUpscaledData.data[i + 2];
-      
       const esrganR = esrganData.data[i];
       const esrganG = esrganData.data[i + 1];
       const esrganB = esrganData.data[i + 2];
       
-      // Calculate luminance for both
       const origLum = 0.299 * origR + 0.587 * origG + 0.114 * origB;
       const esrganLum = 0.299 * esrganR + 0.587 * esrganG + 0.114 * esrganB;
-      
-      // Calculate luminance adjustment factor (how much ESRGAN sharpened the edges)
-      // Apply only subtle enhancement to preserve original colors
       const lumRatio = origLum > 0 ? esrganLum / origLum : 1;
-      const blendFactor = 0.15; // Only 15% influence from ESRGAN luminance
-      const adjustedRatio = 1 + (lumRatio - 1) * blendFactor;
+      const adjustedRatio = Math.max(0.9, Math.min(1.1, 1 + (lumRatio - 1) * 0.1));
       
-      // Clamp the ratio to prevent extreme changes
-      const clampedRatio = Math.max(0.85, Math.min(1.15, adjustedRatio));
-      
-      // Apply subtle luminance adjustment while keeping original colors
-      mergedData.data[i] = Math.max(0, Math.min(255, Math.round(origR * clampedRatio)));
-      mergedData.data[i + 1] = Math.max(0, Math.min(255, Math.round(origG * clampedRatio)));
-      mergedData.data[i + 2] = Math.max(0, Math.min(255, Math.round(origB * clampedRatio)));
+      mergedData.data[i] = Math.max(0, Math.min(255, Math.round(origR * adjustedRatio)));
+      mergedData.data[i + 1] = Math.max(0, Math.min(255, Math.round(origG * adjustedRatio)));
+      mergedData.data[i + 2] = Math.max(0, Math.min(255, Math.round(origB * adjustedRatio)));
       mergedData.data[i + 3] = alpha;
     }
   }
@@ -313,89 +278,305 @@ export async function processEsrganWithAlpha(
   const mergedCanvas = document.createElement('canvas');
   mergedCanvas.width = scaledW;
   mergedCanvas.height = scaledH;
-  const mergedCtx = mergedCanvas.getContext('2d')!;
-  mergedCtx.putImageData(mergedData, 0, 0);
+  mergedCanvas.getContext('2d')!.putImageData(mergedData, 0, 0);
   
-  // Step 4: Center on final canvas
-  const finalCanvas = document.createElement('canvas');
-  finalCanvas.width = TARGET_WIDTH;
-  finalCanvas.height = TARGET_HEIGHT;
-  const finalCtx = finalCanvas.getContext('2d')!;
-  finalCtx.clearRect(0, 0, TARGET_WIDTH, TARGET_HEIGHT);
-  
-  const offsetX = Math.round((TARGET_WIDTH - scaledW) / 2);
-  const offsetY = Math.round((TARGET_HEIGHT - scaledH) / 2);
-  
-  finalCtx.drawImage(mergedCanvas, offsetX, offsetY);
-  
-  console.log('ESRGAN with color preservation complete!');
+  const finalCanvas = centerOnFinalCanvas(mergedCanvas);
+  console.log('[ESRGAN 8x] Complete: 1024×1536 → 8192×12288 → 4500×5400');
   return canvasToBlob(finalCanvas);
 }
 
 /**
- * Apply sharpening filter to an image using convolution
- * Uses unsharp mask technique for enhanced edge definition
+ * RealESRGAN x4+: Uses fal-ai/esrgan with model=RealESRGAN_x4plus, scale=4
+ * Optimized for realistic detail enhancement
  */
-export async function applySharpeningFilter(
-  sourceBlob: Blob,
-  strength: number = 1.5
+export async function processRealEsrganX4(
+  originalBlob: Blob, 
+  realEsrganBlob: Blob
 ): Promise<Blob> {
-  console.log('Applying sharpening filter with strength:', strength);
+  console.log('[RealESRGAN x4+] Processing fal-ai/esrgan model=RealESRGAN_x4plus...');
   
-  const img = await loadImage(sourceBlob);
+  const [originalImg, realEsrganImg] = await Promise.all([
+    loadImage(originalBlob),
+    loadImage(realEsrganBlob)
+  ]);
+
+  const originalCanvas = document.createElement('canvas');
+  originalCanvas.width = originalImg.naturalWidth;
+  originalCanvas.height = originalImg.naturalHeight;
+  const originalCtx = originalCanvas.getContext('2d', { willReadFrequently: true })!;
+  originalCtx.drawImage(originalImg, 0, 0);
   
-  const canvas = document.createElement('canvas');
-  canvas.width = img.naturalWidth;
-  canvas.height = img.naturalHeight;
-  const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
-  ctx.drawImage(img, 0, 0);
+  const { cropLeft, cropTop, contentWidth, contentHeight, scaledW, scaledH } = 
+    calculateCropAndTarget(originalImg, originalCanvas);
+
+  // Upscale original for colors and alpha
+  const originalUpscaledCanvas = multiStepUpscale(
+    originalCanvas, cropLeft, cropTop, contentWidth, contentHeight, scaledW, scaledH
+  );
+  const originalUpscaledCtx = originalUpscaledCanvas.getContext('2d', { willReadFrequently: true })!;
+  const originalUpscaledData = originalUpscaledCtx.getImageData(0, 0, scaledW, scaledH);
   
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const { data, width, height } = imageData;
+  // Process RealESRGAN x4+ image (4096×6144)
+  const realEsrganCanvas = document.createElement('canvas');
+  realEsrganCanvas.width = realEsrganImg.naturalWidth;
+  realEsrganCanvas.height = realEsrganImg.naturalHeight;
+  const realEsrganCtx = realEsrganCanvas.getContext('2d', { willReadFrequently: true })!;
+  realEsrganCtx.drawImage(realEsrganImg, 0, 0);
   
-  // Create output buffer
-  const output = new Uint8ClampedArray(data);
+  const esrganScale = realEsrganImg.naturalWidth / originalImg.naturalWidth; // Should be 4
+  const esrganCropLeft = Math.round(cropLeft * esrganScale);
+  const esrganCropTop = Math.round(cropTop * esrganScale);
+  const esrganCropWidth = Math.round(contentWidth * esrganScale);
+  const esrganCropHeight = Math.round(contentHeight * esrganScale);
   
-  // Sharpening kernel (unsharp mask)
-  // Center weight is increased for stronger sharpening
-  const center = 1 + 4 * strength;
-  const edge = -strength;
+  const scaledRealEsrganCanvas = document.createElement('canvas');
+  scaledRealEsrganCanvas.width = scaledW;
+  scaledRealEsrganCanvas.height = scaledH;
+  const scaledRealEsrganCtx = scaledRealEsrganCanvas.getContext('2d', { willReadFrequently: true })!;
+  scaledRealEsrganCtx.imageSmoothingEnabled = true;
+  scaledRealEsrganCtx.imageSmoothingQuality = 'high';
+  scaledRealEsrganCtx.drawImage(
+    realEsrganCanvas,
+    esrganCropLeft, esrganCropTop, esrganCropWidth, esrganCropHeight,
+    0, 0, scaledW, scaledH
+  );
   
-  // Apply convolution (skip edges to avoid boundary issues)
-  for (let y = 1; y < height - 1; y++) {
-    for (let x = 1; x < width - 1; x++) {
-      const idx = (y * width + x) * 4;
+  const realEsrganData = scaledRealEsrganCtx.getImageData(0, 0, scaledW, scaledH);
+  
+  // Merge: Original colors with RealESRGAN detail, original alpha
+  const mergedData = scaledRealEsrganCtx.createImageData(scaledW, scaledH);
+  for (let i = 0; i < originalUpscaledData.data.length; i += 4) {
+    const alpha = originalUpscaledData.data[i + 3];
+    
+    if (alpha < 10) {
+      mergedData.data[i] = 0;
+      mergedData.data[i + 1] = 0;
+      mergedData.data[i + 2] = 0;
+      mergedData.data[i + 3] = 0;
+    } else {
+      const origR = originalUpscaledData.data[i];
+      const origG = originalUpscaledData.data[i + 1];
+      const origB = originalUpscaledData.data[i + 2];
+      const realR = realEsrganData.data[i];
+      const realG = realEsrganData.data[i + 1];
+      const realB = realEsrganData.data[i + 2];
       
-      // Only process pixels with significant alpha
-      if (data[idx + 3] < 25) continue;
+      const origLum = 0.299 * origR + 0.587 * origG + 0.114 * origB;
+      const realLum = 0.299 * realR + 0.587 * realG + 0.114 * realB;
+      const lumRatio = origLum > 0 ? realLum / origLum : 1;
+      const adjustedRatio = Math.max(0.9, Math.min(1.1, 1 + (lumRatio - 1) * 0.12));
       
-      for (let c = 0; c < 3; c++) { // RGB only, preserve alpha
-        const topIdx = ((y - 1) * width + x) * 4 + c;
-        const bottomIdx = ((y + 1) * width + x) * 4 + c;
-        const leftIdx = (y * width + (x - 1)) * 4 + c;
-        const rightIdx = (y * width + (x + 1)) * 4 + c;
-        const centerIdx = idx + c;
-        
-        const value = 
-          data[centerIdx] * center +
-          data[topIdx] * edge +
-          data[bottomIdx] * edge +
-          data[leftIdx] * edge +
-          data[rightIdx] * edge;
-        
-        output[centerIdx] = Math.max(0, Math.min(255, Math.round(value)));
-      }
-      // Keep original alpha
-      output[idx + 3] = data[idx + 3];
+      mergedData.data[i] = Math.max(0, Math.min(255, Math.round(origR * adjustedRatio)));
+      mergedData.data[i + 1] = Math.max(0, Math.min(255, Math.round(origG * adjustedRatio)));
+      mergedData.data[i + 2] = Math.max(0, Math.min(255, Math.round(origB * adjustedRatio)));
+      mergedData.data[i + 3] = alpha;
     }
   }
   
-  // Put sharpened data back
-  const outputData = new ImageData(output, width, height);
-  ctx.putImageData(outputData, 0, 0);
+  const mergedCanvas = document.createElement('canvas');
+  mergedCanvas.width = scaledW;
+  mergedCanvas.height = scaledH;
+  mergedCanvas.getContext('2d')!.putImageData(mergedData, 0, 0);
   
-  console.log('Sharpening complete!');
-  return canvasToBlob(canvas);
+  const finalCanvas = centerOnFinalCanvas(mergedCanvas);
+  console.log('[RealESRGAN x4+] Complete: 1024×1536 → 4096×6144 → 4500×5400');
+  return canvasToBlob(finalCanvas);
+}
+
+/**
+ * Double Pass: Uses fal-ai/esrgan 4x twice (4x → 4x = 16x total)
+ * Maximum AI upscaling before downscale
+ */
+export async function processDoublePass(
+  originalBlob: Blob, 
+  doublePassBlob: Blob
+): Promise<Blob> {
+  console.log('[Double Pass] Processing fal-ai/esrgan 4x × 2...');
+  
+  const [originalImg, doublePassImg] = await Promise.all([
+    loadImage(originalBlob),
+    loadImage(doublePassBlob)
+  ]);
+
+  const originalCanvas = document.createElement('canvas');
+  originalCanvas.width = originalImg.naturalWidth;
+  originalCanvas.height = originalImg.naturalHeight;
+  const originalCtx = originalCanvas.getContext('2d', { willReadFrequently: true })!;
+  originalCtx.drawImage(originalImg, 0, 0);
+  
+  const { cropLeft, cropTop, contentWidth, contentHeight, scaledW, scaledH } = 
+    calculateCropAndTarget(originalImg, originalCanvas);
+
+  // Upscale original for colors and alpha
+  const originalUpscaledCanvas = multiStepUpscale(
+    originalCanvas, cropLeft, cropTop, contentWidth, contentHeight, scaledW, scaledH
+  );
+  const originalUpscaledCtx = originalUpscaledCanvas.getContext('2d', { willReadFrequently: true })!;
+  const originalUpscaledData = originalUpscaledCtx.getImageData(0, 0, scaledW, scaledH);
+  
+  // Process Double Pass image (16384×24576)
+  const doublePassCanvas = document.createElement('canvas');
+  doublePassCanvas.width = doublePassImg.naturalWidth;
+  doublePassCanvas.height = doublePassImg.naturalHeight;
+  const doublePassCtx = doublePassCanvas.getContext('2d', { willReadFrequently: true })!;
+  doublePassCtx.drawImage(doublePassImg, 0, 0);
+  
+  const dpScale = doublePassImg.naturalWidth / originalImg.naturalWidth; // Should be 16
+  const dpCropLeft = Math.round(cropLeft * dpScale);
+  const dpCropTop = Math.round(cropTop * dpScale);
+  const dpCropWidth = Math.round(contentWidth * dpScale);
+  const dpCropHeight = Math.round(contentHeight * dpScale);
+  
+  const scaledDpCanvas = document.createElement('canvas');
+  scaledDpCanvas.width = scaledW;
+  scaledDpCanvas.height = scaledH;
+  const scaledDpCtx = scaledDpCanvas.getContext('2d', { willReadFrequently: true })!;
+  scaledDpCtx.imageSmoothingEnabled = true;
+  scaledDpCtx.imageSmoothingQuality = 'high';
+  scaledDpCtx.drawImage(
+    doublePassCanvas,
+    dpCropLeft, dpCropTop, dpCropWidth, dpCropHeight,
+    0, 0, scaledW, scaledH
+  );
+  
+  const dpData = scaledDpCtx.getImageData(0, 0, scaledW, scaledH);
+  
+  // Merge: Original colors with double pass sharpness, original alpha
+  const mergedData = scaledDpCtx.createImageData(scaledW, scaledH);
+  for (let i = 0; i < originalUpscaledData.data.length; i += 4) {
+    const alpha = originalUpscaledData.data[i + 3];
+    
+    if (alpha < 10) {
+      mergedData.data[i] = 0;
+      mergedData.data[i + 1] = 0;
+      mergedData.data[i + 2] = 0;
+      mergedData.data[i + 3] = 0;
+    } else {
+      const origR = originalUpscaledData.data[i];
+      const origG = originalUpscaledData.data[i + 1];
+      const origB = originalUpscaledData.data[i + 2];
+      const dpR = dpData.data[i];
+      const dpG = dpData.data[i + 1];
+      const dpB = dpData.data[i + 2];
+      
+      const origLum = 0.299 * origR + 0.587 * origG + 0.114 * origB;
+      const dpLum = 0.299 * dpR + 0.587 * dpG + 0.114 * dpB;
+      const lumRatio = origLum > 0 ? dpLum / origLum : 1;
+      const adjustedRatio = Math.max(0.88, Math.min(1.12, 1 + (lumRatio - 1) * 0.15));
+      
+      mergedData.data[i] = Math.max(0, Math.min(255, Math.round(origR * adjustedRatio)));
+      mergedData.data[i + 1] = Math.max(0, Math.min(255, Math.round(origG * adjustedRatio)));
+      mergedData.data[i + 2] = Math.max(0, Math.min(255, Math.round(origB * adjustedRatio)));
+      mergedData.data[i + 3] = alpha;
+    }
+  }
+  
+  const mergedCanvas = document.createElement('canvas');
+  mergedCanvas.width = scaledW;
+  mergedCanvas.height = scaledH;
+  mergedCanvas.getContext('2d')!.putImageData(mergedData, 0, 0);
+  
+  const finalCanvas = centerOnFinalCanvas(mergedCanvas);
+  console.log('[Double Pass] Complete: 1024×1536 → 16384×24576 → 4500×5400');
+  return canvasToBlob(finalCanvas);
+}
+
+/**
+ * SeedVR: Uses fal-ai/seedvr/upscale/image with upscale_factor=3
+ * High quality AI upscaler with different algorithm
+ */
+export async function processSeedVR(
+  originalBlob: Blob, 
+  seedvrBlob: Blob
+): Promise<Blob> {
+  console.log('[SeedVR] Processing fal-ai/seedvr/upscale/image 3x...');
+  
+  const [originalImg, seedvrImg] = await Promise.all([
+    loadImage(originalBlob),
+    loadImage(seedvrBlob)
+  ]);
+
+  const originalCanvas = document.createElement('canvas');
+  originalCanvas.width = originalImg.naturalWidth;
+  originalCanvas.height = originalImg.naturalHeight;
+  const originalCtx = originalCanvas.getContext('2d', { willReadFrequently: true })!;
+  originalCtx.drawImage(originalImg, 0, 0);
+  
+  const { cropLeft, cropTop, contentWidth, contentHeight, scaledW, scaledH } = 
+    calculateCropAndTarget(originalImg, originalCanvas);
+
+  // Upscale original for colors and alpha
+  const originalUpscaledCanvas = multiStepUpscale(
+    originalCanvas, cropLeft, cropTop, contentWidth, contentHeight, scaledW, scaledH
+  );
+  const originalUpscaledCtx = originalUpscaledCanvas.getContext('2d', { willReadFrequently: true })!;
+  const originalUpscaledData = originalUpscaledCtx.getImageData(0, 0, scaledW, scaledH);
+  
+  // Process SeedVR image (3072×4608)
+  const seedvrCanvas = document.createElement('canvas');
+  seedvrCanvas.width = seedvrImg.naturalWidth;
+  seedvrCanvas.height = seedvrImg.naturalHeight;
+  const seedvrCtx = seedvrCanvas.getContext('2d', { willReadFrequently: true })!;
+  seedvrCtx.drawImage(seedvrImg, 0, 0);
+  
+  const seedvrScale = seedvrImg.naturalWidth / originalImg.naturalWidth; // Should be 3
+  const seedvrCropLeft = Math.round(cropLeft * seedvrScale);
+  const seedvrCropTop = Math.round(cropTop * seedvrScale);
+  const seedvrCropWidth = Math.round(contentWidth * seedvrScale);
+  const seedvrCropHeight = Math.round(contentHeight * seedvrScale);
+  
+  const scaledSeedvrCanvas = document.createElement('canvas');
+  scaledSeedvrCanvas.width = scaledW;
+  scaledSeedvrCanvas.height = scaledH;
+  const scaledSeedvrCtx = scaledSeedvrCanvas.getContext('2d', { willReadFrequently: true })!;
+  scaledSeedvrCtx.imageSmoothingEnabled = true;
+  scaledSeedvrCtx.imageSmoothingQuality = 'high';
+  scaledSeedvrCtx.drawImage(
+    seedvrCanvas,
+    seedvrCropLeft, seedvrCropTop, seedvrCropWidth, seedvrCropHeight,
+    0, 0, scaledW, scaledH
+  );
+  
+  const seedvrData = scaledSeedvrCtx.getImageData(0, 0, scaledW, scaledH);
+  
+  // Merge: Original colors with SeedVR enhancement, original alpha
+  const mergedData = scaledSeedvrCtx.createImageData(scaledW, scaledH);
+  for (let i = 0; i < originalUpscaledData.data.length; i += 4) {
+    const alpha = originalUpscaledData.data[i + 3];
+    
+    if (alpha < 10) {
+      mergedData.data[i] = 0;
+      mergedData.data[i + 1] = 0;
+      mergedData.data[i + 2] = 0;
+      mergedData.data[i + 3] = 0;
+    } else {
+      const origR = originalUpscaledData.data[i];
+      const origG = originalUpscaledData.data[i + 1];
+      const origB = originalUpscaledData.data[i + 2];
+      const seedR = seedvrData.data[i];
+      const seedG = seedvrData.data[i + 1];
+      const seedB = seedvrData.data[i + 2];
+      
+      const origLum = 0.299 * origR + 0.587 * origG + 0.114 * origB;
+      const seedLum = 0.299 * seedR + 0.587 * seedG + 0.114 * seedB;
+      const lumRatio = origLum > 0 ? seedLum / origLum : 1;
+      const adjustedRatio = Math.max(0.9, Math.min(1.1, 1 + (lumRatio - 1) * 0.1));
+      
+      mergedData.data[i] = Math.max(0, Math.min(255, Math.round(origR * adjustedRatio)));
+      mergedData.data[i + 1] = Math.max(0, Math.min(255, Math.round(origG * adjustedRatio)));
+      mergedData.data[i + 2] = Math.max(0, Math.min(255, Math.round(origB * adjustedRatio)));
+      mergedData.data[i + 3] = alpha;
+    }
+  }
+  
+  const mergedCanvas = document.createElement('canvas');
+  mergedCanvas.width = scaledW;
+  mergedCanvas.height = scaledH;
+  mergedCanvas.getContext('2d')!.putImageData(mergedData, 0, 0);
+  
+  const finalCanvas = centerOnFinalCanvas(mergedCanvas);
+  console.log('[SeedVR] Complete: 1024×1536 → 3072×4608 → 4500×5400');
+  return canvasToBlob(finalCanvas);
 }
 
 function findContentBounds(imageData: ImageData): { left: number; top: number; right: number; bottom: number } {
