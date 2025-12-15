@@ -15,6 +15,7 @@ const Index = () => {
     downloadEsrgan,
     downloadAnime,
     downloadDoublePass,
+    downloadSeedvr,
     isProcessing,
     getStepDescription,
     progress,
@@ -117,8 +118,8 @@ const Index = () => {
             </div>
           </div>
 
-          {/* Preview Section - Four columns when complete */}
-          <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
+          {/* Preview Section - Five columns when complete */}
+          <div className="grid md:grid-cols-2 xl:grid-cols-5 gap-4">
             {/* Standard Output */}
             <ImagePreview
               imageUrl={designs.standard?.previewUrl || null}
@@ -169,6 +170,19 @@ const Index = () => {
               title="Double Pass"
               dimensions="16384×24576px"
               ratio="4x + 4x = 16x"
+            />
+
+            {/* SeedVR Output */}
+            <ImagePreview
+              imageUrl={designs.seedvr?.previewUrl || null}
+              isProcessing={isProcessing}
+              onDownload={downloadSeedvr}
+              currentStepLabel={getCurrentStepLabel()}
+              progress={progress}
+              progressMessage={progressMessage}
+              title="SeedVR 3x"
+              dimensions="3072×4608px"
+              ratio="AI Upscale"
             />
           </div>
         </div>
