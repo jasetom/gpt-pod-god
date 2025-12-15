@@ -1,6 +1,13 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { downloadImage, resizeToTarget, processEsrganWithAlpha } from '@/lib/imageProcessor';
+import { 
+  downloadImage, 
+  resizeToTarget, 
+  processEsrgan8x, 
+  processRealEsrganX4, 
+  processDoublePass, 
+  processSeedVR 
+} from '@/lib/imageProcessor';
 import { toast } from 'sonner';
 
 export type GenerationStep = 
@@ -193,7 +200,7 @@ export function useDesignGenerator() {
             blob: processedBlob
           };
         })(),
-        // ESRGAN 8x: fetch from URL and merge RGB with alpha from original
+        // ESRGAN 8x: fetch from URL and process with dedicated function
         (async () => {
           if (!data.esrganImageUrl) return null;
           try {
@@ -204,8 +211,8 @@ export function useDesignGenerator() {
               return null;
             }
             const esrganBlob = await esrganResponse.blob();
-            console.log('Processing ESRGAN with alpha preservation...');
-            const processedBlob = await processEsrganWithAlpha(originalBlob, esrganBlob);
+            console.log('Processing ESRGAN 8x...');
+            const processedBlob = await processEsrgan8x(originalBlob, esrganBlob);
             return {
               previewUrl: URL.createObjectURL(processedBlob),
               blob: processedBlob
@@ -215,29 +222,29 @@ export function useDesignGenerator() {
             return null;
           }
         })(),
-        // Anime ESRGAN: fetch from URL and merge RGB with alpha from original
+        // RealESRGAN x4+: fetch from URL and process with dedicated function
         (async () => {
           if (!data.animeEsrganImageUrl) return null;
           try {
-            console.log('Fetching Anime ESRGAN image from URL...');
-            const animeResponse = await fetch(data.animeEsrganImageUrl);
-            if (!animeResponse.ok) {
-              console.error('Failed to fetch Anime ESRGAN image');
+            console.log('Fetching RealESRGAN x4+ image from URL...');
+            const realEsrganResponse = await fetch(data.animeEsrganImageUrl);
+            if (!realEsrganResponse.ok) {
+              console.error('Failed to fetch RealESRGAN x4+ image');
               return null;
             }
-            const animeBlob = await animeResponse.blob();
-            console.log('Processing Anime ESRGAN with alpha preservation...');
-            const processedBlob = await processEsrganWithAlpha(originalBlob, animeBlob);
+            const realEsrganBlob = await realEsrganResponse.blob();
+            console.log('Processing RealESRGAN x4+...');
+            const processedBlob = await processRealEsrganX4(originalBlob, realEsrganBlob);
             return {
               previewUrl: URL.createObjectURL(processedBlob),
               blob: processedBlob
             };
           } catch (err) {
-            console.error('Failed to process Anime ESRGAN image:', err);
+            console.error('Failed to process RealESRGAN x4+ image:', err);
             return null;
           }
         })(),
-        // Double Pass ESRGAN: fetch from URL and merge RGB with alpha from original
+        // Double Pass ESRGAN: fetch from URL and process with dedicated function
         (async () => {
           if (!data.doublePassImageUrl) return null;
           try {
@@ -248,8 +255,8 @@ export function useDesignGenerator() {
               return null;
             }
             const doublePassBlob = await doublePassResponse.blob();
-            console.log('Processing Double Pass ESRGAN with alpha preservation...');
-            const processedBlob = await processEsrganWithAlpha(originalBlob, doublePassBlob);
+            console.log('Processing Double Pass...');
+            const processedBlob = await processDoublePass(originalBlob, doublePassBlob);
             return {
               previewUrl: URL.createObjectURL(processedBlob),
               blob: processedBlob
@@ -259,7 +266,7 @@ export function useDesignGenerator() {
             return null;
           }
         })(),
-        // SeedVR: fetch from URL and merge RGB with alpha from original
+        // SeedVR: fetch from URL and process with dedicated function
         (async () => {
           if (!data.seedvrImageUrl) return null;
           try {
@@ -270,8 +277,8 @@ export function useDesignGenerator() {
               return null;
             }
             const seedvrBlob = await seedvrResponse.blob();
-            console.log('Processing SeedVR with alpha preservation...');
-            const processedBlob = await processEsrganWithAlpha(originalBlob, seedvrBlob);
+            console.log('Processing SeedVR...');
+            const processedBlob = await processSeedVR(originalBlob, seedvrBlob);
             return {
               previewUrl: URL.createObjectURL(processedBlob),
               blob: processedBlob
