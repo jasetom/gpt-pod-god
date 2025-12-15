@@ -118,8 +118,8 @@ const Index = () => {
             </div>
           </div>
 
-          {/* Preview Section - Five columns when complete */}
-          <div className="grid md:grid-cols-2 xl:grid-cols-5 gap-4">
+          {/* Preview Section - 2 per row for larger previews */}
+          <div className="grid md:grid-cols-2 gap-6">
             {/* Standard Output */}
             <ImagePreview
               imageUrl={designs.standard?.previewUrl || null}
@@ -128,9 +128,9 @@ const Index = () => {
               currentStepLabel={getCurrentStepLabel()}
               progress={progress}
               progressMessage={progressMessage}
-              title="Standard"
+              title="Standard (Client Canvas)"
               dimensions="4500×5400px"
-              ratio="Client Upscale"
+              ratio="Browser Canvas 2x Upscale"
             />
 
             {/* ESRGAN 8x Output */}
@@ -141,9 +141,9 @@ const Index = () => {
               currentStepLabel={getCurrentStepLabel()}
               progress={progress}
               progressMessage={progressMessage}
-              title="ESRGAN 8x"
-              dimensions="8192×12288px"
-              ratio="AI Upscale"
+              title="ESRGAN (fal-ai/esrgan 8x)"
+              dimensions="4500×5400px"
+              ratio="8192×12288 → 4500×5400"
             />
 
             {/* RealESRGAN x4plus Output */}
@@ -154,9 +154,9 @@ const Index = () => {
               currentStepLabel={getCurrentStepLabel()}
               progress={progress}
               progressMessage={progressMessage}
-              title="RealESRGAN x4+"
-              dimensions="4096×6144px"
-              ratio="Detail Enhanced"
+              title="RealESRGAN x4+ (fal-ai/esrgan)"
+              dimensions="4500×5400px"
+              ratio="4096×6144 → 4500×5400"
             />
 
             {/* Double Pass Output */}
@@ -167,9 +167,9 @@ const Index = () => {
               currentStepLabel={getCurrentStepLabel()}
               progress={progress}
               progressMessage={progressMessage}
-              title="Double Pass"
-              dimensions="16384×24576px"
-              ratio="4x + 4x = 16x"
+              title="Double Pass (fal-ai/esrgan 4x×2)"
+              dimensions="4500×5400px"
+              ratio="16384×24576 → 4500×5400"
             />
 
             {/* SeedVR Output */}
@@ -180,9 +180,9 @@ const Index = () => {
               currentStepLabel={getCurrentStepLabel()}
               progress={progress}
               progressMessage={progressMessage}
-              title="SeedVR 3x"
-              dimensions="3072×4608px"
-              ratio="AI Upscale"
+              title="SeedVR (fal-ai/seedvr 3x)"
+              dimensions="4500×5400px"
+              ratio="3072×4608 → 4500×5400"
             />
           </div>
         </div>
