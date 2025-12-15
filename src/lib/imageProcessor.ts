@@ -244,7 +244,7 @@ export async function processEsrgan8x(
   
   const esrganData = scaledEsrganCtx.getImageData(0, 0, scaledW, scaledH);
   
-  // Merge: Original colors with subtle ESRGAN enhancement, original alpha
+  // Merge: ESRGAN colors with original alpha
   const mergedData = scaledEsrganCtx.createImageData(scaledW, scaledH);
   for (let i = 0; i < originalUpscaledData.data.length; i += 4) {
     const alpha = originalUpscaledData.data[i + 3];
@@ -255,22 +255,10 @@ export async function processEsrgan8x(
       mergedData.data[i + 2] = 0;
       mergedData.data[i + 3] = 0;
     } else {
-      // Get original and ESRGAN luminance
-      const origR = originalUpscaledData.data[i];
-      const origG = originalUpscaledData.data[i + 1];
-      const origB = originalUpscaledData.data[i + 2];
-      const esrganR = esrganData.data[i];
-      const esrganG = esrganData.data[i + 1];
-      const esrganB = esrganData.data[i + 2];
-      
-      const origLum = 0.299 * origR + 0.587 * origG + 0.114 * origB;
-      const esrganLum = 0.299 * esrganR + 0.587 * esrganG + 0.114 * esrganB;
-      const lumRatio = origLum > 0 ? esrganLum / origLum : 1;
-      const adjustedRatio = Math.max(0.9, Math.min(1.1, 1 + (lumRatio - 1) * 0.1));
-      
-      mergedData.data[i] = Math.max(0, Math.min(255, Math.round(origR * adjustedRatio)));
-      mergedData.data[i + 1] = Math.max(0, Math.min(255, Math.round(origG * adjustedRatio)));
-      mergedData.data[i + 2] = Math.max(0, Math.min(255, Math.round(origB * adjustedRatio)));
+      // Use ESRGAN colors directly, original alpha
+      mergedData.data[i] = esrganData.data[i];
+      mergedData.data[i + 1] = esrganData.data[i + 1];
+      mergedData.data[i + 2] = esrganData.data[i + 2];
       mergedData.data[i + 3] = alpha;
     }
   }
@@ -343,7 +331,7 @@ export async function processRealEsrganX4(
   
   const realEsrganData = scaledRealEsrganCtx.getImageData(0, 0, scaledW, scaledH);
   
-  // Merge: Original colors with RealESRGAN detail, original alpha
+  // Merge: RealESRGAN colors with original alpha
   const mergedData = scaledRealEsrganCtx.createImageData(scaledW, scaledH);
   for (let i = 0; i < originalUpscaledData.data.length; i += 4) {
     const alpha = originalUpscaledData.data[i + 3];
@@ -354,21 +342,10 @@ export async function processRealEsrganX4(
       mergedData.data[i + 2] = 0;
       mergedData.data[i + 3] = 0;
     } else {
-      const origR = originalUpscaledData.data[i];
-      const origG = originalUpscaledData.data[i + 1];
-      const origB = originalUpscaledData.data[i + 2];
-      const realR = realEsrganData.data[i];
-      const realG = realEsrganData.data[i + 1];
-      const realB = realEsrganData.data[i + 2];
-      
-      const origLum = 0.299 * origR + 0.587 * origG + 0.114 * origB;
-      const realLum = 0.299 * realR + 0.587 * realG + 0.114 * realB;
-      const lumRatio = origLum > 0 ? realLum / origLum : 1;
-      const adjustedRatio = Math.max(0.9, Math.min(1.1, 1 + (lumRatio - 1) * 0.12));
-      
-      mergedData.data[i] = Math.max(0, Math.min(255, Math.round(origR * adjustedRatio)));
-      mergedData.data[i + 1] = Math.max(0, Math.min(255, Math.round(origG * adjustedRatio)));
-      mergedData.data[i + 2] = Math.max(0, Math.min(255, Math.round(origB * adjustedRatio)));
+      // Use RealESRGAN colors directly, original alpha
+      mergedData.data[i] = realEsrganData.data[i];
+      mergedData.data[i + 1] = realEsrganData.data[i + 1];
+      mergedData.data[i + 2] = realEsrganData.data[i + 2];
       mergedData.data[i + 3] = alpha;
     }
   }
@@ -441,7 +418,7 @@ export async function processDoublePass(
   
   const dpData = scaledDpCtx.getImageData(0, 0, scaledW, scaledH);
   
-  // Merge: Original colors with double pass sharpness, original alpha
+  // Merge: Double Pass colors with original alpha
   const mergedData = scaledDpCtx.createImageData(scaledW, scaledH);
   for (let i = 0; i < originalUpscaledData.data.length; i += 4) {
     const alpha = originalUpscaledData.data[i + 3];
@@ -452,21 +429,10 @@ export async function processDoublePass(
       mergedData.data[i + 2] = 0;
       mergedData.data[i + 3] = 0;
     } else {
-      const origR = originalUpscaledData.data[i];
-      const origG = originalUpscaledData.data[i + 1];
-      const origB = originalUpscaledData.data[i + 2];
-      const dpR = dpData.data[i];
-      const dpG = dpData.data[i + 1];
-      const dpB = dpData.data[i + 2];
-      
-      const origLum = 0.299 * origR + 0.587 * origG + 0.114 * origB;
-      const dpLum = 0.299 * dpR + 0.587 * dpG + 0.114 * dpB;
-      const lumRatio = origLum > 0 ? dpLum / origLum : 1;
-      const adjustedRatio = Math.max(0.88, Math.min(1.12, 1 + (lumRatio - 1) * 0.15));
-      
-      mergedData.data[i] = Math.max(0, Math.min(255, Math.round(origR * adjustedRatio)));
-      mergedData.data[i + 1] = Math.max(0, Math.min(255, Math.round(origG * adjustedRatio)));
-      mergedData.data[i + 2] = Math.max(0, Math.min(255, Math.round(origB * adjustedRatio)));
+      // Use Double Pass colors directly, original alpha
+      mergedData.data[i] = dpData.data[i];
+      mergedData.data[i + 1] = dpData.data[i + 1];
+      mergedData.data[i + 2] = dpData.data[i + 2];
       mergedData.data[i + 3] = alpha;
     }
   }
@@ -539,7 +505,7 @@ export async function processSeedVR(
   
   const seedvrData = scaledSeedvrCtx.getImageData(0, 0, scaledW, scaledH);
   
-  // Merge: Original colors with SeedVR enhancement, original alpha
+  // Merge: SeedVR colors with original alpha
   const mergedData = scaledSeedvrCtx.createImageData(scaledW, scaledH);
   for (let i = 0; i < originalUpscaledData.data.length; i += 4) {
     const alpha = originalUpscaledData.data[i + 3];
@@ -550,21 +516,10 @@ export async function processSeedVR(
       mergedData.data[i + 2] = 0;
       mergedData.data[i + 3] = 0;
     } else {
-      const origR = originalUpscaledData.data[i];
-      const origG = originalUpscaledData.data[i + 1];
-      const origB = originalUpscaledData.data[i + 2];
-      const seedR = seedvrData.data[i];
-      const seedG = seedvrData.data[i + 1];
-      const seedB = seedvrData.data[i + 2];
-      
-      const origLum = 0.299 * origR + 0.587 * origG + 0.114 * origB;
-      const seedLum = 0.299 * seedR + 0.587 * seedG + 0.114 * seedB;
-      const lumRatio = origLum > 0 ? seedLum / origLum : 1;
-      const adjustedRatio = Math.max(0.9, Math.min(1.1, 1 + (lumRatio - 1) * 0.1));
-      
-      mergedData.data[i] = Math.max(0, Math.min(255, Math.round(origR * adjustedRatio)));
-      mergedData.data[i + 1] = Math.max(0, Math.min(255, Math.round(origG * adjustedRatio)));
-      mergedData.data[i + 2] = Math.max(0, Math.min(255, Math.round(origB * adjustedRatio)));
+      // Use SeedVR colors directly, original alpha
+      mergedData.data[i] = seedvrData.data[i];
+      mergedData.data[i + 1] = seedvrData.data[i + 1];
+      mergedData.data[i + 2] = seedvrData.data[i + 2];
       mergedData.data[i + 3] = alpha;
     }
   }
