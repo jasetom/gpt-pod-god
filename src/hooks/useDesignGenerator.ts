@@ -122,11 +122,41 @@ export function useDesignGenerator() {
         }
       }, 200);
 
-      // Call the edge function (does all the heavy lifting)
+      // Call the edge function with retry logic for timeouts
       console.log('Calling generate-design edge function...');
-      const { data, error } = await supabase.functions.invoke('generate-design', {
-        body: { prompt: inputPrompt }
-      });
+      
+      let data: any = null;
+      let error: any = null;
+      const maxRetries = 3;
+      
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        console.log(`Attempt ${attempt}/${maxRetries}...`);
+        
+        const result = await supabase.functions.invoke('generate-design', {
+          body: { prompt: inputPrompt }
+        });
+        
+        data = result.data;
+        error = result.error;
+        
+        // If successful or it's a validation error, don't retry
+        if (!error && !data?.error) {
+          break;
+        }
+        
+        // If it's a validation error (400), don't retry
+        if (data?.error && (data.error.includes('required') || data.error.includes('empty') || data.error.includes('too long'))) {
+          break;
+        }
+        
+        // Log and retry on timeout/connection errors
+        console.warn(`Attempt ${attempt} failed:`, error?.message || data?.error);
+        
+        if (attempt < maxRetries) {
+          console.log('Retrying in 2 seconds...');
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      }
 
       if (progressInterval) clearInterval(progressInterval);
 
