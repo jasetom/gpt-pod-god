@@ -1,13 +1,6 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { 
-  downloadImage, 
-  resizeToTarget, 
-  processEsrgan8x, 
-  processRealEsrganX4, 
-  processDoublePass, 
-  processSeedVR 
-} from '@/lib/imageProcessor';
+import { downloadImage, processSeedVR } from '@/lib/imageProcessor';
 import { toast } from 'sonner';
 
 export type GenerationStep = 
@@ -34,25 +27,16 @@ export const STEPS: StepInfo[] = [
 
 // Expected total time ~50 seconds, distribute progress smoothly
 const EXPECTED_TOTAL_TIME_MS = 50000;
-const STEP_PROGRESS: Record<string, { start: number; end: number }> = {
-  generating: { start: 0, end: 60 },
-  refining: { start: 60, end: 72 },
-  upscaling: { start: 72, end: 95 },
-  finalizing: { start: 95, end: 100 },
-};
 
-export type GeneratedDesigns = {
-  standard: { previewUrl: string; blob: Blob } | null;
-  esrgan: { previewUrl: string; blob: Blob } | null;
-  anime: { previewUrl: string; blob: Blob } | null;
-  doublePass: { previewUrl: string; blob: Blob } | null;
-  seedvr: { previewUrl: string; blob: Blob } | null;
-};
+export type GeneratedDesign = {
+  previewUrl: string;
+  blob: Blob;
+} | null;
 
 export function useDesignGenerator() {
   const [step, setStep] = useState<GenerationStep>('idle');
   const [currentStepIndex, setCurrentStepIndex] = useState(-1);
-  const [designs, setDesigns] = useState<GeneratedDesigns>({ standard: null, esrgan: null, anime: null, doublePass: null, seedvr: null });
+  const [design, setDesign] = useState<GeneratedDesign>(null);
   const [prompt, setPrompt] = useState('');
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState('');
@@ -60,7 +44,7 @@ export function useDesignGenerator() {
   const reset = useCallback(() => {
     setStep('idle');
     setCurrentStepIndex(-1);
-    setDesigns({ standard: null, esrgan: null, anime: null, doublePass: null, seedvr: null });
+    setDesign(null);
     setPrompt('');
     setProgress(0);
     setProgressMessage('');
@@ -70,7 +54,7 @@ export function useDesignGenerator() {
     // Full reset before starting new generation
     setStep('idle');
     setCurrentStepIndex(-1);
-    setDesigns({ standard: null, esrgan: null, anime: null, doublePass: null, seedvr: null });
+    setDesign(null);
     setProgress(0);
     setProgressMessage('');
     
@@ -187,126 +171,41 @@ export function useDesignGenerator() {
         return new Blob([bytes], { type: 'image/png' });
       };
 
-      // Get original image blob first (needed for both standard and ESRGAN alpha)
+      // Get original image blob first (needed for alpha channel)
       const originalBlob = base64ToBlob(data.imageUrl);
 
-      // Process all images in parallel
-      const [standardResult, esrganResult, animeResult, doublePassResult, seedvrResult] = await Promise.all([
-        // Standard: client-side upscaling
-        (async () => {
-          const processedBlob = await resizeToTarget(originalBlob);
-          return {
-            previewUrl: URL.createObjectURL(processedBlob),
-            blob: processedBlob
-          };
-        })(),
-        // ESRGAN 8x: fetch from URL and process with dedicated function
-        (async () => {
-          if (!data.esrganImageUrl) return null;
-          try {
-            console.log('Fetching ESRGAN 8x image from URL...');
-            const esrganResponse = await fetch(data.esrganImageUrl);
-            if (!esrganResponse.ok) {
-              console.error('Failed to fetch ESRGAN image');
-              return null;
-            }
-            const esrganBlob = await esrganResponse.blob();
-            console.log('Processing ESRGAN 8x...');
-            const processedBlob = await processEsrgan8x(originalBlob, esrganBlob);
-            return {
-              previewUrl: URL.createObjectURL(processedBlob),
-              blob: processedBlob
-            };
-          } catch (err) {
-            console.error('Failed to process ESRGAN image:', err);
-            return null;
-          }
-        })(),
-        // RealESRGAN x4+: fetch from URL and process with dedicated function
-        (async () => {
-          if (!data.animeEsrganImageUrl) return null;
-          try {
-            console.log('Fetching RealESRGAN x4+ image from URL...');
-            const realEsrganResponse = await fetch(data.animeEsrganImageUrl);
-            if (!realEsrganResponse.ok) {
-              console.error('Failed to fetch RealESRGAN x4+ image');
-              return null;
-            }
-            const realEsrganBlob = await realEsrganResponse.blob();
-            console.log('Processing RealESRGAN x4+...');
-            const processedBlob = await processRealEsrganX4(originalBlob, realEsrganBlob);
-            return {
-              previewUrl: URL.createObjectURL(processedBlob),
-              blob: processedBlob
-            };
-          } catch (err) {
-            console.error('Failed to process RealESRGAN x4+ image:', err);
-            return null;
-          }
-        })(),
-        // Double Pass ESRGAN: fetch from URL and process with dedicated function
-        (async () => {
-          if (!data.doublePassImageUrl) return null;
-          try {
-            console.log('Fetching Double Pass ESRGAN image from URL...');
-            const doublePassResponse = await fetch(data.doublePassImageUrl);
-            if (!doublePassResponse.ok) {
-              console.error('Failed to fetch Double Pass ESRGAN image');
-              return null;
-            }
-            const doublePassBlob = await doublePassResponse.blob();
-            console.log('Processing Double Pass...');
-            const processedBlob = await processDoublePass(originalBlob, doublePassBlob);
-            return {
-              previewUrl: URL.createObjectURL(processedBlob),
-              blob: processedBlob
-            };
-          } catch (err) {
-            console.error('Failed to process Double Pass ESRGAN image:', err);
-            return null;
-          }
-        })(),
-        // SeedVR: fetch from URL and process with dedicated function
-        (async () => {
-          if (!data.seedvrImageUrl) return null;
-          try {
-            console.log('Fetching SeedVR image from URL...');
-            const seedvrResponse = await fetch(data.seedvrImageUrl);
-            if (!seedvrResponse.ok) {
-              console.error('Failed to fetch SeedVR image');
-              return null;
-            }
+      // Process SeedVR image
+      let processedDesign: GeneratedDesign = null;
+      
+      if (data.seedvrImageUrl) {
+        try {
+          console.log('Fetching SeedVR image from URL...');
+          const seedvrResponse = await fetch(data.seedvrImageUrl);
+          if (seedvrResponse.ok) {
             const seedvrBlob = await seedvrResponse.blob();
             console.log('Processing SeedVR...');
             const processedBlob = await processSeedVR(originalBlob, seedvrBlob);
-            return {
+            processedDesign = {
               previewUrl: URL.createObjectURL(processedBlob),
               blob: processedBlob
             };
-          } catch (err) {
-            console.error('Failed to process SeedVR image:', err);
-            return null;
           }
-        })()
-      ]);
+        } catch (err) {
+          console.error('Failed to process SeedVR image:', err);
+        }
+      }
       
       setProgress(95);
       setProgressMessage('Almost done...');
       
-      setDesigns({
-        standard: standardResult,
-        esrgan: esrganResult,
-        anime: animeResult,
-        doublePass: doublePassResult,
-        seedvr: seedvrResult
-      });
+      setDesign(processedDesign);
 
       // Complete
       setStep('complete');
       setCurrentStepIndex(3);
       setProgress(100);
       setProgressMessage('Done!');
-      toast.success('Your designs are ready!');
+      toast.success('Your design is ready!');
 
     } catch (error) {
       if (progressInterval) clearInterval(progressInterval);
@@ -318,50 +217,14 @@ export function useDesignGenerator() {
     }
   }, []);
 
-  const downloadStandard = useCallback(() => {
-    if (designs.standard?.blob) {
+  const downloadDesign = useCallback(() => {
+    if (design?.blob) {
       const timestamp = Date.now();
-      const filename = `pod-design-standard-${timestamp}.png`;
-      downloadImage(designs.standard.blob, filename);
-      toast.success('Standard design downloaded!');
+      const filename = `pod-design-${timestamp}.png`;
+      downloadImage(design.blob, filename);
+      toast.success('Design downloaded!');
     }
-  }, [designs.standard]);
-
-  const downloadEsrgan = useCallback(() => {
-    if (designs.esrgan?.blob) {
-      const timestamp = Date.now();
-      const filename = `pod-design-esrgan-8x-${timestamp}.png`;
-      downloadImage(designs.esrgan.blob, filename);
-      toast.success('ESRGAN 8x design downloaded!');
-    }
-  }, [designs.esrgan]);
-
-  const downloadAnime = useCallback(() => {
-    if (designs.anime?.blob) {
-      const timestamp = Date.now();
-      const filename = `pod-design-anime-esrgan-${timestamp}.png`;
-      downloadImage(designs.anime.blob, filename);
-      toast.success('Anime ESRGAN design downloaded!');
-    }
-  }, [designs.anime]);
-
-  const downloadDoublePass = useCallback(() => {
-    if (designs.doublePass?.blob) {
-      const timestamp = Date.now();
-      const filename = `pod-design-double-pass-${timestamp}.png`;
-      downloadImage(designs.doublePass.blob, filename);
-      toast.success('Double Pass design downloaded!');
-    }
-  }, [designs.doublePass]);
-
-  const downloadSeedvr = useCallback(() => {
-    if (designs.seedvr?.blob) {
-      const timestamp = Date.now();
-      const filename = `pod-design-seedvr-${timestamp}.png`;
-      downloadImage(designs.seedvr.blob, filename);
-      toast.success('SeedVR design downloaded!');
-    }
-  }, [designs.seedvr]);
+  }, [design]);
 
   const getStepDescription = useCallback(() => {
     if (currentStepIndex >= 0 && currentStepIndex < STEPS.length) {
@@ -373,16 +236,12 @@ export function useDesignGenerator() {
   return {
     step,
     currentStepIndex,
-    designs,
+    design,
     prompt,
     progress,
     progressMessage,
     generate,
-    downloadStandard,
-    downloadEsrgan,
-    downloadAnime,
-    downloadDoublePass,
-    downloadSeedvr,
+    downloadDesign,
     reset,
     getStepDescription,
     isProcessing: step !== 'idle' && step !== 'complete' && step !== 'error',
