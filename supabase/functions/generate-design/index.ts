@@ -33,7 +33,7 @@ serve(async (req) => {
 
     // Sanitize and validate prompt length
     const sanitizedPrompt = prompt.trim();
-    const MAX_PROMPT_LENGTH = 500;
+    const MAX_PROMPT_LENGTH = 2000;
     
     if (sanitizedPrompt.length === 0) {
       return new Response(
