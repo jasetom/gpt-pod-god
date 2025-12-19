@@ -185,7 +185,7 @@ ${sanitizedPrompt}`,
       throw new Error('No image generated');
     }
 
-    console.log('Fetching generated image and starting ESRGAN upscale in parallel...');
+    console.log('Fetching generated image and starting SeedVR upscale in parallel...');
 
     // Helper to convert array buffer to base64 data URL
     const arrayBufferToDataUrl = (buffer: ArrayBuffer): string => {
@@ -200,152 +200,10 @@ ${sanitizedPrompt}`,
       return `data:image/png;base64,${base64}`;
     };
 
-    // Parallel: fetch original image AND run all upscale variants
-    const [imageResponse, esrganImageUrl, animeEsrganImageUrl, doublePassImageUrl, seedvrImageUrl] = await Promise.all([
+    // Parallel: fetch original image AND run SeedVR upscale
+    const [imageResponse, seedvrImageUrl] = await Promise.all([
       // Fetch original image
       fetch(initialImageUrl),
-      
-      // Standard ESRGAN 8x upscale
-      (async () => {
-        try {
-          console.log('Starting ESRGAN 8x upscale...');
-          const esrganResponse = await fetch('https://fal.run/fal-ai/esrgan', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Key ${FAL_KEY}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              image_url: initialImageUrl,
-              scale: 8,
-            }),
-          });
-
-          if (!esrganResponse.ok) {
-            console.error('ESRGAN upscale failed:', esrganResponse.status);
-            return null;
-          }
-
-          const esrganData = await esrganResponse.json();
-          const url = esrganData.image?.url;
-          
-          if (!url) {
-            console.error('No ESRGAN image URL returned');
-            return null;
-          }
-
-          console.log('ESRGAN 8x upscale complete!');
-          return url;
-        } catch (err) {
-          console.error('ESRGAN upscale error:', err);
-          return null;
-        }
-      })(),
-      
-      // RealESRGAN_x4plus - optimized for realistic detail enhancement
-      (async () => {
-        try {
-          console.log('Starting RealESRGAN x4plus upscale...');
-          const realEsrganResponse = await fetch('https://fal.run/fal-ai/esrgan', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Key ${FAL_KEY}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              image_url: initialImageUrl,
-              scale: 4,
-              model: 'RealESRGAN_x4plus',
-            }),
-          });
-
-          if (!realEsrganResponse.ok) {
-            console.error('RealESRGAN x4plus upscale failed:', realEsrganResponse.status);
-            return null;
-          }
-
-          const realEsrganData = await realEsrganResponse.json();
-          const url = realEsrganData.image?.url;
-          
-          if (!url) {
-            console.error('No RealESRGAN x4plus image URL returned');
-            return null;
-          }
-
-          console.log('RealESRGAN x4plus upscale complete!');
-          return url;
-        } catch (err) {
-          console.error('Anime ESRGAN upscale error:', err);
-          return null;
-        }
-      })(),
-      
-      // Double Pass: ESRGAN 4x, then another 4x
-      (async () => {
-        try {
-          console.log('Starting Double Pass ESRGAN (4x + 4x)...');
-          
-          // First pass: 4x
-          const firstPassResponse = await fetch('https://fal.run/fal-ai/esrgan', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Key ${FAL_KEY}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              image_url: initialImageUrl,
-              scale: 4,
-            }),
-          });
-
-          if (!firstPassResponse.ok) {
-            console.error('Double Pass first upscale failed:', firstPassResponse.status);
-            return null;
-          }
-
-          const firstPassData = await firstPassResponse.json();
-          const firstPassUrl = firstPassData.image?.url;
-          
-          if (!firstPassUrl) {
-            console.error('No first pass image URL returned');
-            return null;
-          }
-
-          console.log('First 4x pass complete, starting second 4x pass...');
-          
-          // Second pass: another 4x
-          const secondPassResponse = await fetch('https://fal.run/fal-ai/esrgan', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Key ${FAL_KEY}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              image_url: firstPassUrl,
-              scale: 4,
-            }),
-          });
-
-          if (!secondPassResponse.ok) {
-            console.error('Double Pass second upscale failed:', secondPassResponse.status);
-            return null;
-          }
-
-          const secondPassData = await secondPassResponse.json();
-          const url = secondPassData.image?.url;
-          
-          if (!url) {
-            console.error('No second pass image URL returned');
-            return null;
-          }
-
-          console.log('Double Pass ESRGAN (4x + 4x = 16x) complete!');
-          return url;
-        } catch (err) {
-          console.error('Double Pass ESRGAN error:', err);
-          return null;
-        }
-      })(),
       
       // SeedVR 3x upscale - high quality AI upscaler
       (async () => {
@@ -399,9 +257,6 @@ ${sanitizedPrompt}`,
       JSON.stringify({ 
         success: true,
         imageUrl: dataUrl,
-        esrganImageUrl: esrganImageUrl,
-        animeEsrganImageUrl: animeEsrganImageUrl,
-        doublePassImageUrl: doublePassImageUrl,
         seedvrImageUrl: seedvrImageUrl,
         message: 'Design generated successfully'
       }),

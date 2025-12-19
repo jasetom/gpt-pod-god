@@ -9,13 +9,9 @@ const Index = () => {
   const {
     step,
     currentStepIndex,
-    designs,
+    design,
     generate,
-    downloadStandard,
-    downloadEsrgan,
-    downloadAnime,
-    downloadDoublePass,
-    downloadSeedvr,
+    downloadDesign,
     isProcessing,
     getStepDescription,
     progress,
@@ -43,7 +39,7 @@ const Index = () => {
         <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-accent/10 rounded-full blur-[128px]" />
       </div>
 
-      <div className="relative z-10 container mx-auto px-4 py-8 max-w-7xl">
+      <div className="relative z-10 container mx-auto px-4 py-8 max-w-4xl">
         {/* Header */}
         <header className="text-center mb-12">
           <div className="inline-flex items-center justify-center gap-3 mb-4">
@@ -118,71 +114,18 @@ const Index = () => {
             </div>
           </div>
 
-          {/* Preview Section - 2 per row for larger previews */}
-          <div className="grid md:grid-cols-2 gap-6">
-            {/* Standard Output */}
+          {/* Preview Section - Single Design */}
+          <div className="max-w-2xl mx-auto">
             <ImagePreview
-              imageUrl={designs.standard?.previewUrl || null}
+              imageUrl={design?.previewUrl || null}
               isProcessing={isProcessing}
-              onDownload={downloadStandard}
+              onDownload={downloadDesign}
               currentStepLabel={getCurrentStepLabel()}
               progress={progress}
               progressMessage={progressMessage}
-              title="Standard (Client Canvas)"
+              title="High Resolution Design"
               dimensions="4500×5400px"
-              ratio="Browser Canvas 2x Upscale"
-            />
-
-            {/* ESRGAN 8x Output */}
-            <ImagePreview
-              imageUrl={designs.esrgan?.previewUrl || null}
-              isProcessing={isProcessing}
-              onDownload={downloadEsrgan}
-              currentStepLabel={getCurrentStepLabel()}
-              progress={progress}
-              progressMessage={progressMessage}
-              title="ESRGAN (fal-ai/esrgan 8x)"
-              dimensions="4500×5400px"
-              ratio="8192×12288 → 4500×5400"
-            />
-
-            {/* RealESRGAN x4plus Output */}
-            <ImagePreview
-              imageUrl={designs.anime?.previewUrl || null}
-              isProcessing={isProcessing}
-              onDownload={downloadAnime}
-              currentStepLabel={getCurrentStepLabel()}
-              progress={progress}
-              progressMessage={progressMessage}
-              title="RealESRGAN x4+ (fal-ai/esrgan)"
-              dimensions="4500×5400px"
-              ratio="4096×6144 → 4500×5400"
-            />
-
-            {/* Double Pass Output */}
-            <ImagePreview
-              imageUrl={designs.doublePass?.previewUrl || null}
-              isProcessing={isProcessing}
-              onDownload={downloadDoublePass}
-              currentStepLabel={getCurrentStepLabel()}
-              progress={progress}
-              progressMessage={progressMessage}
-              title="Double Pass (fal-ai/esrgan 4x×2)"
-              dimensions="4500×5400px"
-              ratio="16384×24576 → 4500×5400"
-            />
-
-            {/* SeedVR Output */}
-            <ImagePreview
-              imageUrl={designs.seedvr?.previewUrl || null}
-              isProcessing={isProcessing}
-              onDownload={downloadSeedvr}
-              currentStepLabel={getCurrentStepLabel()}
-              progress={progress}
-              progressMessage={progressMessage}
-              title="SeedVR (fal-ai/seedvr 3x)"
-              dimensions="4500×5400px"
-              ratio="3072×4608 → 4500×5400"
+              ratio="SeedVR 3x Upscaled"
             />
           </div>
         </div>
